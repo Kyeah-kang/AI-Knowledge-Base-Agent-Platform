@@ -1,0 +1,88 @@
+// 注册页面
+
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { Form, Input, Button, Card, Typography, message, Space } from "antd";
+import { UserOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
+import { register } from "../api/auth";
+import { useAuthStore } from "../store/authStore";
+import { APP_NAME } from "../utils/constants";
+
+const { Title, Text } = Typography;
+
+export default function Register() {
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const loginAction = useAuthStore((s) => s.login);
+
+  const onFinish = async (values: {
+    username: string;
+    password: string;
+    email?: string;
+  }) => {
+    setLoading(true);
+    try {
+      const res = await register(values);
+      loginAction(res.data.data);
+      message.success("注册成功");
+      navigate("/dashboard");
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "注册失败";
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "#f0f2f5",
+      }}
+    >
+      <Card style={{ width: 400, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+        <Space direction="vertical" size="large" style={{ width: "100%" }}>
+          <div style={{ textAlign: "center" }}>
+            <Title level={3}>{APP_NAME}</Title>
+            <Text type="secondary">创建新账户</Text>
+          </div>
+          <Form name="register" onFinish={onFinish} layout="vertical" size="large">
+            <Form.Item
+              name="username"
+              rules={[
+                { required: true, message: "请输入用户名" },
+                { min: 3, message: "用户名至少3个字符" },
+              ]}
+            >
+              <Input prefix={<UserOutlined />} placeholder="用户名" />
+            </Form.Item>
+            <Form.Item name="email" rules={[{ type: "email", message: "邮箱格式不正确" }]}>
+              <Input prefix={<MailOutlined />} placeholder="邮箱（可选）" />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              rules={[
+                { required: true, message: "请输入密码" },
+                { min: 6, message: "密码至少6个字符" },
+              ]}
+            >
+              <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} block>
+                注册
+              </Button>
+            </Form.Item>
+          </Form>
+          <div style={{ textAlign: "center" }}>
+            <Link to="/login">已有账户？立即登录</Link>
+          </div>
+        </Space>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,31 @@
+# 环境变量与密钥
+.env
+*.env
+backend/.env
+backend/test_token.txt
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+backend/.pytest_cache/
+
+# 运行时产物
+backend/uploads/
+backend/logs/
+database-backups/
+*.dump
+*.sql
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
