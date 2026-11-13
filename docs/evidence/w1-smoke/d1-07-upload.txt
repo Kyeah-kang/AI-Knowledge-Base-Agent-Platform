@@ -1,0 +1,53 @@
+# D1 步骤7（上传 txt）证据记录 —— 失败，已定位到根因
+日期：2026-10-23（周五）   操作人：用户   定位：教练（只读诊断，未改业务代码）
+
+## 现象（截图 d1-07-a-upload-500.png）
+- 页面：http://localhost:3000/knowledge-bases/8/documents ，表格"暂无数据"
+- Network：`POST .../knowledge-bases/8/documents` → **500**，Size **0 B**，1.55 s；重试一次同样 **500 / 0 B / 0.95 s**
+- 上传后的文件确实落到磁盘：backend/uploads/7/8/4ed7a2066190_d1-05-timing.txt（20:44:17）、0b5f25db9749_d1-06-kb.txt（20:44:22）
+  => 说明用户选的文件是证据目录里的 d1-05-timing.txt / d1-06-kb.txt，不是 d1-smoke.txt；不影响结论（同一条代码路径）
+
+## 根因（实测复现，非推测）
+在 `backend/` 下用同一份已落盘文件复现整条链路：
+1. 解析：`DocumentParser.parse()` → OK，1807 字符
+2. 切片：`TextSplitter.split_text()` → OK，5 个切片（首块 440 字）
+3. MySQL 建文档记录：OK（diagnostic doc.id=11，已回滚）
+4. 更新状态 processing：OK
+5. **PostgreSQL 写切片：FAILED**
+
+   asyncpg.exceptions.DatatypeMismatchError:
+   column "embedding" is of type vector but expression is of type character varying
+   HINT: You will need to rewrite or cast the expression.
+
+   SQL: INSERT INTO document_chunks (document_id, chunk_index, content, embedding, extra_meta, created_at)
+        VALUES ($1::INTEGER, $2::INTEGER, $3::VARCHAR, $4::VARCHAR, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE)
+
+   注意 `$4::VARCHAR`：ORM 认为 embedding 是字符串。
+
+## 机理（三层串起来）
+1. Python 侧没装 `pgvector` 客户端 => backend/app/models/document.py:120 的 `if _HAS_PGVECTOR` 为 False
+   => 走 :126-129 的降级分支，`embedding` 被映射成 `Text`
+2. 但数据库里的列是真实 `vector(1536)`（基线快照：6 行、0 向量）
+3. SQLAlchemy 按 Text 生成 `$4::VARCHAR`，asyncpg prepare 阶段与列类型 vector 不匹配 => DatatypeMismatchError
+   => 异常被 document_service.py:163-171 捕获成 AppException(500) => 前端只拿到 500
+   => 同时 MySQL 事务回滚，文档记录没留下 => 页面"暂无数据"，用户看不到任何原因
+
+## 连带发现
+- 文件已写入磁盘但数据库回滚 => backend/uploads/7/8/ 下留下两个**孤儿文件**（磁盘泄漏，真实缺陷）
+- 500 的响应体在浏览器里是 **0 B**：项目有兜底处理器（app/core/exceptions.py:101-111 会返回 {"code":500,"message":"文档处理失败：..."}），
+  但浏览器没拿到正文 => 前端只能给通用错误，违反"失败要显式"。具体原因待查（记为 B-014 的待查项）。
+- 后端进程 CWD 已确认是 `backend/`（uploads 相对路径落到了 backend/uploads）=> 遗留 #9 的"CWD 待验证"可关闭一半。
+
+## 与 D2 的关系
+这条链路的修复正是 D2 的第 1-2 步：
+1. `pip install pgvector` => `_HAS_PGVECTOR=True` => embedding 映射为 `Vector(settings.EMBEDDING_DIMENSION)`
+2. 维度对齐 1024 并迁移列 `vector(1536)` -> `vector(1024)`
+=> 因此 D1 第 7 行在今天**无法通过**，它不是偶发 bug，而是 D2 要修的那个结构性缺陷提前暴露。
+=> 若只做第 1 步（装客户端不迁移列）：INSERT 参数类型变为 vector，写 NULL 向量大概率可过，
+   随后的 embedding 生成失败会被 document_service.py:150-151 的 try/except 吞成 warning（正好是 B-003 "静默降级"）。
+
+## 只读诊断的干净性证明（诊断后复查）
+- MySQL：`select * from documents order by id desc limit 5` => 最大 id=6（基线数据），诊断用的 id=11 已回滚消失
+- MySQL：`select count(*) from documents where knowledge_base_id=8` => 0
+- PG：`select count(*), count(embedding) from document_chunks` => (6, 0)，与基线一致
+=> 诊断未写入任何数据。

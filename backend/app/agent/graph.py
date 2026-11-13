@@ -26,14 +26,124 @@ LangGraph Agent 图 — 思考-行动-观察循环
     # result = {"result": str, "tool_calls": int, "iterations": int}
 """
 
-import json
 import logging
 
 from app.agent.state import AgentState, get_default_state
 from app.agent.tools import execute_tool, get_tool_definitions
+from app.core.config import settings
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
+
+# ─── 达到迭代上限时的兜底（P0-4） ───
+
+# 强制收尾的指令：明确告诉模型"别再调工具，用已有信息回答"
+_FINAL_SUMMARY_INSTRUCTION = (
+    "现在不要再调用任何工具。请仅基于上面已经获得的工具结果，"
+    "直接给出最终回答；如果信息确实不足，请说明还缺什么信息。"
+)
+
+# 连总结调用都失败时的兜底文案（必须非空，否则用户看到的就是空回复）
+_NO_ANSWER_TEMPLATE = (
+    "我已经连续调用了 {n} 轮工具，但没能整理出最终结论。"
+    "建议把问题拆成更小的一步，或补充更具体的条件后重试。"
+)
+
+
+async def summarize_without_tools(messages: list[dict], max_iterations: int) -> str:
+    """
+    达到迭代上限时，强制一次**不带工具**的总结调用。
+
+    为什么需要：
+      超限时最后一条 assistant 消息是 `content=None` 的 tool_calls，
+      `_extract_result` 取不到正文 → 用户收到空回复。
+      这里让模型用"已经拿到的工具结果"给出结论；连这步都失败则返回兜底文案，
+      保证调用方拿到的永远是非空字符串。
+
+    异常：
+        不抛异常。总结失败属于"可降级"，但降级必须给出可读文案。
+    """
+    try:
+        llm = LLMService()
+        final_messages = _close_pending_tool_calls(list(messages)) + [
+            {"role": "user", "content": _FINAL_SUMMARY_INSTRUCTION}
+        ]
+        text = (await llm.chat(final_messages, use_cache=False) or "").strip()
+        if text:
+            logger.info("Agent 达到迭代上限，已通过一次额外总结调用给出回答")
+            return text
+    except Exception as e:
+        logger.warning("Agent 总结调用失败，使用兜底文案: %s", e)
+
+    return _NO_ANSWER_TEMPLATE.format(n=max_iterations)
+
+
+def _close_pending_tool_calls(messages: list[dict]) -> list[dict]:
+    """
+    补齐"悬空的 tool_calls"。
+
+    场景：达到迭代上限时，最后一轮 LLM 刚返回 tool_calls，但循环已经结束、
+    工具还没来得及执行。此时消息序列是「... assistant(tool_calls)」而没有对应的
+    tool 回复，上游会直接 400：
+      An assistant message with 'tool_calls' must be followed by tool messages
+      responding to each 'tool_call_id'
+    兜底总结因此永远失败、只能退回模板文案。这里补一条说明性的 tool 消息即可。
+    """
+    if not messages:
+        return list(messages)
+
+    last = messages[-1]
+    if last.get("role") != "assistant" or not last.get("tool_calls"):
+        return list(messages)
+
+    pending = [tc.get("id") for tc in last["tool_calls"] if tc.get("id")]
+    if not pending:
+        return list(messages)
+
+    patched = list(messages)
+    for call_id in pending:
+        patched.append(
+            {
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": "（该工具调用未执行：已达到最大工具轮数）",
+            }
+        )
+    return patched
+
+
+def _merge_state(state: dict, delta: dict | None) -> None:
+    """
+    把节点返回值合并进状态。
+
+    关键点：`messages` 是**追加**语义（节点返回的只是"新增的那几条"）。
+    `AgentState` 上声明了 `operator.add` reducer，但那只在 LangGraph 图内生效；
+    早先这里直接用 `dict.update()`，等于用新消息**替换**整个历史，
+    于是 tool 消息丢了前置的 assistant tool_calls，上游 LLM 直接 400（P1-8）。
+    """
+    for key, value in (delta or {}).items():
+        if key == "messages":
+            state["messages"] = list(state.get("messages") or []) + list(value or [])
+        else:
+            state[key] = value
+
+
+async def _ensure_final_answer(state: dict, max_iterations: int) -> dict:
+    """
+    保证返回值里一定有非空回答：为空则补一次总结调用（P0-4）。
+    """
+    result = _extract_result(state)
+    if result["result"]:
+        return result
+
+    logger.warning(
+        "Agent 未产出回答（已用 %s 轮迭代），触发兜底总结", max_iterations
+    )
+    text = await summarize_without_tools(state.get("messages") or [], max_iterations)
+    state["messages"] = list(state.get("messages") or []) + [
+        {"role": "assistant", "content": text}
+    ]
+    return _extract_result(state)
 
 
 # ─── 图节点：调用 LLM ───
@@ -121,19 +231,23 @@ async def execute_tool_node(state: AgentState) -> dict:
         return {"tool_calls": [], "tool_results": []}
 
     # 构建 context（传递 RAG 所需信息）
-    context = {}
-    if state.get("pg_db") is not None:
+    # P0-3：检索范围必须来自"已解析的 document_ids"。
+    # 拿不到范围时宁可不提供 retriever（工具会回答"不可用"），
+    # 也绝不能让它去全库检索 —— 那等于跨用户数据泄露。
+    context: dict = {}
+    document_ids = state.get("document_ids") or []
+    if state.get("pg_db") is not None and document_ids:
         from app.rag.embeddings import EmbeddingService
-        from app.rag.vector_store import VectorStore
         from app.rag.retriever import Retriever
+        from app.rag.vector_store import VectorStore
 
         embedder = EmbeddingService()
         vector_store = VectorStore(state["pg_db"])
         retriever = Retriever(embedder, vector_store)
         context["retriever"] = retriever
-
-    if state.get("knowledge_base_ids"):
-        context["kb_ids"] = state["knowledge_base_ids"]
+        context["document_ids"] = document_ids
+    elif state.get("pg_db") is not None:
+        logger.info("Agent 没有文档范围（未选知识库），知识库检索工具不可用")
 
     # 逐一执行工具
     tool_messages = []
@@ -176,7 +290,7 @@ def should_continue(state: AgentState) -> str:
     """
     tool_calls = state.get("tool_calls", [])
     iteration = state.get("iteration", 0)
-    max_iterations = state.get("max_iterations", 10)
+    max_iterations = state.get("max_iterations", settings.AGENT_MAX_ITERATIONS)
 
     if tool_calls and iteration < max_iterations:
         return "continue"
@@ -246,6 +360,7 @@ async def run_agent(
     retriever=None,
     pg_db=None,
     knowledge_base_ids: list[int] | None = None,
+    document_ids: list[int] | None = None,
     session_id: int | None = None,
     user_id: int | None = None,
 ) -> dict:
@@ -258,13 +373,14 @@ async def run_agent(
         messages: 初始消息列表（已包含 system prompt + 历史消息 + 用户消息）
         retriever: Retriever 实例（知识库检索用）
         pg_db: PostgreSQL 会话
-        knowledge_base_ids: 可用知识库 ID 列表
+        knowledge_base_ids: 用户选中的知识库 ID（仅记录用途）
+        document_ids: **已解析的检索范围**。为空时工具不允许检索（P0-3）
         session_id: 当前会话 ID
         user_id: 当前用户 ID
 
     返回：
         {
-            "result": str,            # 最终回答文本
+            "result": str,            # 最终回答文本（保证非空）
             "tool_calls_count": int,  # 工具调用次数
             "iterations": int,        # LLM 调用次数
             "intermediate_steps": list,  # 中间步骤记录
@@ -276,10 +392,11 @@ async def run_agent(
         tool_calls=[],
         tool_results=[],
         iteration=0,
-        max_iterations=10,
+        max_iterations=settings.AGENT_MAX_ITERATIONS,
         session_id=session_id,
         user_id=user_id,
         knowledge_base_ids=knowledge_base_ids,
+        document_ids=document_ids,
         pg_db=pg_db,
     )
 
@@ -305,13 +422,18 @@ async def _run_langgraph(graph, state: AgentState) -> dict:
 
     LangGraph 内部已经实现了 call_llm → execute_tool → call_llm 的循环，
     我们只需要调用 graph.ainvoke() 并解析最终状态。
+
+    说明：异常时**仍然降级**到内置循环，但降级路径本身已修好（P1-8），
+    且最终一定产出非空回答（P0-4）。
     """
+    max_iterations = state.get("max_iterations", settings.AGENT_MAX_ITERATIONS)
     try:
         final_state = await graph.ainvoke(state)
-        return _extract_result(final_state)
-    except Exception as e:
+    except Exception:
         logger.exception("LangGraph 执行失败，降级到内置循环")
         return await _run_manual_loop(state)
+
+    return await _ensure_final_answer(dict(final_state), max_iterations)
 
 
 async def _run_manual_loop(state: AgentState) -> dict:
@@ -325,12 +447,12 @@ async def _run_manual_loop(state: AgentState) -> dict:
           for each tool_call → execute_tool → append result
     """
     current_state = dict(state)
-    max_iterations = current_state.get("max_iterations", 10)
+    max_iterations = current_state.get("max_iterations", settings.AGENT_MAX_ITERATIONS)
 
-    for iteration in range(1, max_iterations + 1):
+    for _ in range(1, max_iterations + 1):
         # 调用 LLM
         result = await call_llm_node(current_state)
-        current_state.update(result)
+        _merge_state(current_state, result)
 
         # 检查是否需要继续
         decision = should_continue(current_state)
@@ -339,9 +461,9 @@ async def _run_manual_loop(state: AgentState) -> dict:
 
         # 执行工具
         tool_result = await execute_tool_node(current_state)
-        current_state.update(tool_result)
+        _merge_state(current_state, tool_result)
 
-    return _extract_result(current_state)
+    return await _ensure_final_answer(current_state, max_iterations)
 
 
 def _extract_result(state: AgentState) -> dict:

@@ -8,7 +8,8 @@ Document（MySQL）和 DocumentChunk（PostgreSQL）是跨数据库的，
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
 
 # 对应 MySQL 里的文档元信息
 class DocumentResponse(BaseModel):
@@ -20,6 +21,8 @@ class DocumentResponse(BaseModel):
     file_size: int                        # 字节
     status: str                           # pending → processing → completed / failed
     chunk_count: int = 0
+    # 失败原因：让前端/运维不用翻日志就知道为什么失败（成功时为 null）
+    error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

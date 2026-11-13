@@ -14,7 +14,6 @@ from app.database.base import MySQLBase
 from app.utils.datetime_utils import utc_now
 
 
-
 # User 模型 — 对应数据库的 users 表
 class User(MySQLBase):
     """用户模型"""

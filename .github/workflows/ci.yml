@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支的新推送取消上一次未跑完的任务，省额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # 真实依赖：与本地 docker compose 一致的三件套
+    services:
+      mysql:
+        image: mysql:8.2
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pw
+          MYSQL_DATABASE: ai_kb_platform
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_pw --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci_pg_pw
+          POSTGRES_DB: ai_kb_vector
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s --health-timeout=3s --health-retries=6
+
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci_root_pw
+      MYSQL_DATABASE: ai_kb_platform
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci_pg_pw
+      POSTGRES_DATABASE: ai_kb_vector
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      DEBUG: "false"
+      # CI 专用假密钥：DEBUG=false 时要求长度 >= 32 且不是默认占位符
+      JWT_SECRET_KEY: ci-only-secret-0123456789abcdef0123456789abcdef
+      # 集成测试会真连上面三个服务，几十秒上百次请求，限流必须关（否则自己 429 自己）
+      RATE_LIMIT_ENABLED: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 静态检查（ruff）
+        run: ruff check .
+
+      - name: 类型检查（mypy）
+        run: mypy app
+
+      - name: 数据库迁移（空库 → head）
+        # 必须早于 pytest：集成测试会真连库，表不存在会全红
+        run: |
+          alembic upgrade head
+          alembic -n postgres upgrade head
+
+      - name: 测试 + 覆盖率门禁
+        run: pytest --cov=app
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖（严格按 lock 文件）
+        run: npm ci
+
+      - name: 代码检查
+        run: npm run lint
+
+      - name: 单元测试（SSE 解析器）
+        run: npm test
+
+      - name: 构建
+        run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    # 前两个 job 都过才验证镜像，省算力
+    needs: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: compose 配置校验
+        run: docker compose config --quiet
+
+      - name: 构建后端镜像
+        run: docker build -t kb-backend:ci ./backend
+
+      - name: 构建前端镜像
+        run: docker build -t kb-frontend:ci ./frontend

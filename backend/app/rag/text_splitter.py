@@ -19,13 +19,25 @@
 from typing import Any
 
 # 可选导入 LangChain 的 RecursiveCharacterTextSplitter
-# 如果没装 langchain，就使用内置的分割策略作为降级方案
+# LangChain 1.x 已把它拆到独立的 langchain-text-splitters 包；
+# 旧路径 `langchain.text_splitter` 在 1.x 里已不存在，静默 ImportError 会让切片
+# 悄悄退化成"按字符硬切"，同一份文档在不同机器上切出不同结果（P0-9）。
 try:
-    from langchain.text_splitter import RecursiveCharacterTextSplitter as LangChainSplitter
+    from langchain_text_splitters import (
+        RecursiveCharacterTextSplitter as LangChainSplitter,
+    )
 
     _HAS_LANGCHAIN = True
-except ImportError:
-    _HAS_LANGCHAIN = False
+except ImportError:  # pragma: no cover - 兼容旧环境
+    try:
+        from langchain.text_splitter import (  # type: ignore[no-redef]
+            RecursiveCharacterTextSplitter as LangChainSplitter,
+        )
+
+        _HAS_LANGCHAIN = True
+    except ImportError:
+        LangChainSplitter = None  # type: ignore[assignment]
+        _HAS_LANGCHAIN = False
 
 
 class TextSplitter:

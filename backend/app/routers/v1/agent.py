@@ -24,7 +24,6 @@ from app.schemas.agent import (
     AgentChatResponse,
     AgentToolCreate,
     AgentToolResponse,
-    AgentStreamEvent,
 )
 from app.schemas.common import Response
 from app.services.agent_service import AgentService
@@ -43,7 +42,11 @@ def get_agent_service(
 # ─── Agent 聊天（非流式） ───
 
 
-@router.post("/chat", response_model=Response[AgentChatResponse])
+@router.post(
+    "/chat",
+    summary="Agent 对话（非流式）",
+    response_model=Response[AgentChatResponse],
+)
 async def agent_chat(
     request: AgentChatRequest,
     current_user: User = Depends(get_current_user),
@@ -70,6 +73,7 @@ async def agent_chat(
         session_id=request.session_id,
         system_prompt=request.system_prompt,
         knowledge_base_ids=request.knowledge_base_ids,
+        model_name=request.model_name,
     )
     return Response(data=result)
 
@@ -77,51 +81,35 @@ async def agent_chat(
 # ─── Agent 聊天（SSE 流式） ───
 
 
-@router.get("/chat/stream")
+@router.post(
+    "/chat/stream",
+    summary="Agent 对话（SSE 流式，含工具调用事件）",
+)
 async def agent_chat_stream(
-    content: str = Query(..., min_length=1, description="消息内容"),
-    session_id: int = Query(None, description="会话 ID（可选，不传则自动创建）"),
-    system_prompt: str = Query(None, description="系统提示词（可选）"),
-    kb_ids: str = Query(
-        None,
-        description="知识库 ID 列表，逗号分隔，如 '1,2,3'（可选）",
-    ),
+    request: AgentChatRequest,
     current_user: User = Depends(get_current_user),
     service: AgentService = Depends(get_agent_service),
 ):
     """
-    Agent 聊天（SSE 流式）— 逐事件推送。
+    Agent 流式对话（**POST + JSON body**，P1-12）。
 
-    SSE 事件类型：
-      event: session     → data: {"session_id": 1}        （新会话创建时）
-      event: rag         → data: {"context_length": 500}  （RAG 上下文长度）
-      event: tool_call   → data: {"name": "web_search", "arguments": "..."}
-      event: tool_result → data: {"name": "web_search", "result": "..."}
-      event: token       → data: {"token": "正"}          （最终回答逐字推送）
-      event: done        → data: {"iterations": 3, "tool_calls_count": 2}
-      event: error       → data: {"message": "..."}
+    与 chat 同理：消息内容不再放进 URL，避免进入访问日志与代理日志。
 
-    使用示例：
-      curl -N "http://localhost:8000/api/v1/agent/chat/stream?content=你好"
-      curl -N "http://localhost:8000/api/v1/agent/chat/stream?content=搜索今日新闻&kb_ids=1,2"
+    请求体：
+        {"content": "算一下 1024*768", "session_id": 1, "knowledge_base_ids": [2]}
+
+    SSE 事件：
+        event: session / rag / tool_call / tool_result / token / done / error
     """
-    # 解析 kb_ids
-    knowledge_base_ids = None
-    if kb_ids:
-        try:
-            knowledge_base_ids = [
-                int(x.strip()) for x in kb_ids.split(",") if x.strip()
-            ]
-        except ValueError:
-            pass
 
     async def event_generator():
         async for event in service.chat_stream(
-            content=content,
+            content=request.content,
             user_id=current_user.id,
-            session_id=session_id,
-            system_prompt=system_prompt,
-            knowledge_base_ids=knowledge_base_ids,
+            session_id=request.session_id,
+            system_prompt=request.system_prompt,
+            knowledge_base_ids=request.knowledge_base_ids,
+            model_name=request.model_name,
         ):
             yield event
 
@@ -136,10 +124,11 @@ async def agent_chat_stream(
     )
 
 
-# ─── 工具管理 ───
-
-
-@router.get("/tools", response_model=Response[list[AgentToolResponse]])
+@router.get(
+    "/tools",
+    summary="工具列表",
+    response_model=Response[list[AgentToolResponse]],
+)
 async def list_tools(
     enabled_only: bool = Query(True, description="是否只返回已启用的工具"),
     current_user: User = Depends(get_current_user),
@@ -150,7 +139,11 @@ async def list_tools(
     return Response(data=tools)
 
 
-@router.post("/tools", response_model=Response[AgentToolResponse])
+@router.post(
+    "/tools",
+    summary="新增工具（无 executor 时仅展示，不交给 LLM）",
+    response_model=Response[AgentToolResponse],
+)
 async def create_tool(
     tool_data: AgentToolCreate,
     current_user: User = Depends(get_current_admin),
@@ -163,6 +156,7 @@ async def create_tool(
 
 @router.put(
     "/tools/{tool_id}/toggle",
+    summary="启用/禁用工具",
     response_model=Response[AgentToolResponse],
 )
 async def toggle_tool(

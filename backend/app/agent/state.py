@@ -11,11 +11,12 @@ Agent 的工作记忆，包含：
                                └─ "end"      → 返回最终回答
 """
 
+import operator
 from typing import Annotated, Any
 
 from typing_extensions import TypedDict
 
-import operator
+from app.core.config import settings
 
 
 class AgentState(TypedDict):
@@ -30,7 +31,9 @@ class AgentState(TypedDict):
       max_iterations: 最大循环次数
       session_id:  当前聊天会话 ID（用于保存消息）
       user_id:     当前用户 ID（用于权限校验）
-      knowledge_base_ids: 可用的知识库 ID 列表（RAG 工具使用）
+      knowledge_base_ids: 用户选中的知识库 ID 列表（仅用于展示/日志）
+      document_ids: 已解析的检索范围（选中的知识库下的文档 ID）。
+                    **工具检索只认它**：为空时不允许做全库检索（P0-3）。
       pg_db:       PostgreSQL 会话（RAG 检索用）
     """
 
@@ -42,6 +45,7 @@ class AgentState(TypedDict):
     session_id: int | None
     user_id: int | None
     knowledge_base_ids: list[int] | None
+    document_ids: list[int] | None
     pg_db: Any | None  # AsyncSession for PostgreSQL
 
 
@@ -63,10 +67,11 @@ def get_default_state(**kwargs) -> AgentState:
         "tool_calls": [],
         "tool_results": [],
         "iteration": 0,
-        "max_iterations": 10,  # 最多 10 轮工具调用，防止死循环
+        "max_iterations": settings.AGENT_MAX_ITERATIONS,  # 防止工具调用死循环
         "session_id": None,
         "user_id": None,
         "knowledge_base_ids": None,
+        "document_ids": None,
         "pg_db": None,
     }
     defaults.update(kwargs)

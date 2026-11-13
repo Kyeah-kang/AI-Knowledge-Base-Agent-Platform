@@ -1,0 +1,13 @@
+﻿user=p210smoke87268
+  文档状态: completed
+
+[P2-10] 问一个需要知识库的问题，检查 rag 事件里的 citations
+  context_length: 135
+  citations 数量: 1
+    引用: 差旅制度.md | 相关度 0.7655 | # 差旅制度
+
+## 住宿标准
+一线城市住宿上限为每晚 60
+  最后一帧: message / {"token": "", "done": true, "model": "deepseek-chat"}
+
+ALL ASSERTIONS PASSED

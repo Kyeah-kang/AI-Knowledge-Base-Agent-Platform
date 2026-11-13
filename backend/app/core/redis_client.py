@@ -20,7 +20,7 @@ Redis 连接管理 — 连接池 + 心跳检测 + 自动降级
 """
 
 import logging
-from typing import Any
+import time
 
 from app.core.config import settings
 
@@ -38,20 +38,29 @@ class RedisManager:
     def __init__(self):
         self._client = None
         self._available = False
+        # 失败后的冷却截止时间（monotonic）：避免每个请求都白等 3 秒连接超时
+        self._next_retry_at = 0.0
 
     async def get_client(self):
         """
-        获取 Redis 客户端。
+        获取 Redis 客户端；不可用时返回 None（业务层负责降级）。
 
-        如果 Redis 不可用，返回 None。
-        业务层调用方需处理 None 情况（降级/跳过缓存）。
+        注意冷却机制（P1-13）：
+          原来只要 `_available` 是 False，**每个请求**都会重新连一次 Redis，
+          而每次连接失败要等 3 秒超时 —— Redis 一挂，接口整体被拖慢 3 秒。
+          现在失败后进入 `REDIS_RETRY_COOLDOWN_SECONDS` 冷却期，期间直接返回 None。
         """
-        if not self._available:
-            await self._connect()
+        if self._available:
+            return self._client
+
+        if time.monotonic() < self._next_retry_at:
+            return None
+
+        await self._connect()
         return self._client if self._available else None
 
     async def _connect(self):
-        """连接 Redis（懒加载）"""
+        """连接 Redis（懒加载）；失败后进入冷却期"""
         try:
             import redis.asyncio as aioredis
 
@@ -77,9 +86,13 @@ class RedisManager:
         except ImportError:
             logger.warning("redis 包未安装，缓存功能不可用")
             self._available = False
+            self._next_retry_at = time.monotonic() + 3600
         except Exception as e:
             logger.warning(f"Redis 连接失败，缓存功能降级: {e}")
             self._available = False
+            self._next_retry_at = (
+                time.monotonic() + settings.REDIS_RETRY_COOLDOWN_SECONDS
+            )
 
     async def close(self):
         """关闭 Redis 连接池（应用关闭时调用）"""

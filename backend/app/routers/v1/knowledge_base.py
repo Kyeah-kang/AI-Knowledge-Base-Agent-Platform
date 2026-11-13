@@ -11,7 +11,7 @@ DELETE /knowledge-bases/{id}             → 删除知识库（级联删文档�
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db
+from app.core.deps import get_db, get_vector_db
 from app.models.user import User
 from app.routers.v1 import get_current_user
 from app.schemas.common import PaginationResponse, Response
@@ -25,12 +25,19 @@ from app.services.knowledge_base_service import KnowledgeBaseService
 router = APIRouter(prefix="/knowledge-bases", tags=["知识库"])
 
 
-def get_service(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseService:
-    """依赖注入：创建 KnowledgeBaseService 实例"""
-    return KnowledgeBaseService(db)
+def get_service(
+    db: AsyncSession = Depends(get_db),
+    pg_db: AsyncSession = Depends(get_vector_db),
+) -> KnowledgeBaseService:
+    """依赖注入：创建 KnowledgeBaseService 实例（带 PG 会话，删除时才能清切片）"""
+    return KnowledgeBaseService(db, pg_db)
 
 
-@router.post("", response_model=Response[KnowledgeBaseResponse])
+@router.post(
+    "",
+    summary="创建知识库",
+    response_model=Response[KnowledgeBaseResponse],
+)
 async def create_knowledge_base(
     request: CreateKnowledgeBaseRequest,
     current_user: User = Depends(get_current_user),
@@ -41,7 +48,11 @@ async def create_knowledge_base(
     return Response(data=result)
 
 
-@router.get("", response_model=Response[PaginationResponse[KnowledgeBaseResponse]])
+@router.get(
+    "",
+    summary="知识库列表",
+    response_model=Response[PaginationResponse[KnowledgeBaseResponse]],
+)
 async def list_knowledge_bases(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=50, description="每页条数"),
@@ -61,6 +72,7 @@ async def list_knowledge_bases(
 
 @router.get(
     "/{kb_id}",
+    summary="知识库详情",
     response_model=Response[KnowledgeBaseResponse],
 )
 async def get_knowledge_base(
@@ -75,6 +87,7 @@ async def get_knowledge_base(
 
 @router.put(
     "/{kb_id}",
+    summary="修改知识库",
     response_model=Response[KnowledgeBaseResponse],
 )
 async def update_knowledge_base(
@@ -90,6 +103,7 @@ async def update_knowledge_base(
 
 @router.delete(
     "/{kb_id}",
+    summary="删除知识库（同时清理向量切片）",
     response_model=Response[None],
 )
 async def delete_knowledge_base(

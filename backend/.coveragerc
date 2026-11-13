@@ -1,0 +1,23 @@
+# 覆盖率门禁（P2-7）
+#
+# 用法：pytest --cov=app         → 低于 fail_under 直接失败
+#       pytest                   → 不跑覆盖率（日常快速反馈）
+#       pytest -m integration --no-cov  → 只跑集成测试时不参与门禁
+#
+# 当前基线 68%（137 个用例）。门禁设在 65%，比基线低 3 个点：
+# 允许小幅波动，但任何"删测试换速度"的改动都会被挡住。
+# 逐步上调：每补一批核心链路用例，把这个数字提高到接近实际基线。
+
+[run]
+source = app
+branch = False
+
+[report]
+fail_under = 65
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    if __name__ == .__main__.:

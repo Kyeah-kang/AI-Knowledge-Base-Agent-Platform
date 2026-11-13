@@ -17,9 +17,12 @@ Retriever — RAG 检索编排
 """
 
 import logging
+import time
 from typing import Any
 
+from app.core import metrics
 from app.core.config import settings
+from app.core.exceptions import RetrievalError
 from app.rag.embeddings import EmbeddingService
 from app.rag.vector_store import VectorStore
 
@@ -64,39 +67,76 @@ class Retriever:
             document_ids: 可选，限定搜索的文档范围
 
         返回：
-            格式化后的上下文文本，可直接拼接到 system prompt 中
+            格式化后的上下文文本；**检索成功但没有命中时返回空字符串**
 
-        如果 Embedding 服务不可用，返回空字符串。
+        异常：
+            RetrievalError: 检索链路不可用（Embedding 未配置 / 调用失败 / 向量库报错）。
+                            调用方必须处理，不允许把它当成"没找到"继续回答。
+        """
+        result = await self._search(query, top_k=top_k, document_ids=document_ids)
+        if not result:
+            return ""
+        return self._format_context(result)
+
+    async def _search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_ids: list[int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        检索的共用内核：embed → 向量搜索 → 返回原始结果列表（可能为空）。
+
+        把"失败"和"空结果"分开表达：失败抛 RetrievalError，空结果返回 []。
         """
         if not self.embedder.is_available:
-            logger.warning("Embedding 服务不可用，跳过 RAG 检索")
-            return ""
-
-        top_k = top_k or settings.VECTOR_TOP_K
-
-        try:
-            # 1. 生成查询向量
-            query_embedding = await self.embedder.embed(query)
-            if not query_embedding:
-                return ""
-
-            # 2. 相似度搜索
-            results = await self.vector_store.similarity_search(
-                query_embedding=query_embedding,
-                top_k=top_k,
-                document_ids=document_ids,
+            metrics.incr("rag_retrieval_total", status="unavailable")
+            logger.error("RAG 检索不可用：Embedding 服务未配置（EMBEDDING_API_KEY 为空）")
+            raise RetrievalError(
+                "知识库检索不可用：未配置 Embedding 服务",
+                detail="EmbeddingService.is_available=False",
             )
 
+        top_k = top_k or settings.VECTOR_TOP_K
+        started = time.perf_counter()
+        try:
+            try:
+                query_embedding = await self.embedder.embed(query)
+            except Exception as e:
+                metrics.incr("rag_retrieval_total", status="error")
+                logger.error("RAG 检索失败：查询向量生成失败: %s", e)
+                raise RetrievalError(
+                    "知识库检索失败：查询向量生成失败", detail=str(e)
+                ) from e
+
+            if not query_embedding:
+                metrics.incr("rag_retrieval_total", status="empty")
+                return []
+
+            try:
+                results = await self.vector_store.similarity_search(
+                    query_embedding=query_embedding,
+                    top_k=top_k,
+                    document_ids=document_ids,
+                )
+            except Exception as e:
+                metrics.incr("rag_retrieval_total", status="error")
+                logger.error("RAG 检索失败：向量检索出错: %s", e)
+                raise RetrievalError(
+                    "知识库检索失败：向量检索出错", detail=str(e)
+                ) from e
+
             if not results:
-                logger.info("RAG 检索未找到相关内容")
-                return ""
+                metrics.incr("rag_retrieval_total", status="empty")
+                logger.info("RAG 检索未找到相关内容（top_k=%s）", top_k)
+                return []
 
-            # 3. 格式化上下文
-            return self._format_context(results)
-
-        except Exception as e:
-            logger.error(f"RAG 检索失败: {e}")
-            return ""
+            metrics.incr("rag_retrieval_total", status="ok")
+            return results
+        finally:
+            metrics.observe_ms(
+                "rag_retrieval_latency", (time.perf_counter() - started) * 1000
+            )
 
     async def retrieve_with_details(
         self,
@@ -105,7 +145,7 @@ class Retriever:
         document_ids: list[int] | None = None,
     ) -> dict[str, Any]:
         """
-        检索并返回详细结果（含元数据）。
+        检索并返回详细结果（含元数据，按阈值过滤）。
 
         返回：
             {
@@ -114,8 +154,12 @@ class Retriever:
                 "chunks": [{"content": "...", "similarity": 0.92, ...}, ...],
                 "chunk_count": int,
             }
+
+        异常：
+            RetrievalError: 同 retrieve()，链路不可用时抛出而不是伪装成"无结果"。
         """
-        if not self.embedder.is_available:
+        results = await self._search(query, top_k=top_k, document_ids=document_ids)
+        if not results:
             return {
                 "has_results": False,
                 "context": "",
@@ -123,51 +167,16 @@ class Retriever:
                 "chunk_count": 0,
             }
 
-        top_k = top_k or settings.VECTOR_TOP_K
+        # 过滤低相似度结果
+        threshold = settings.VECTOR_SIMILARITY_THRESHOLD
+        filtered = [r for r in results if r["similarity"] >= threshold]
 
-        try:
-            query_embedding = await self.embedder.embed(query)
-            if not query_embedding:
-                return {
-                    "has_results": False,
-                    "context": "",
-                    "chunks": [],
-                    "chunk_count": 0,
-                }
-
-            results = await self.vector_store.similarity_search(
-                query_embedding=query_embedding,
-                top_k=top_k,
-                document_ids=document_ids,
-            )
-
-            if not results:
-                return {
-                    "has_results": False,
-                    "context": "",
-                    "chunks": [],
-                    "chunk_count": 0,
-                }
-
-            # 过滤低相似度结果
-            threshold = settings.VECTOR_SIMILARITY_THRESHOLD
-            filtered = [r for r in results if r["similarity"] >= threshold]
-
-            return {
-                "has_results": len(filtered) > 0,
-                "context": self._format_context(filtered),
-                "chunks": filtered,
-                "chunk_count": len(filtered),
-            }
-
-        except Exception as e:
-            logger.error(f"RAG 检索失败: {e}")
-            return {
-                "has_results": False,
-                "context": "",
-                "chunks": [],
-                "chunk_count": 0,
-            }
+        return {
+            "has_results": len(filtered) > 0,
+            "context": self._format_context(filtered),
+            "chunks": filtered,
+            "chunk_count": len(filtered),
+        }
 
     def _format_context(self, chunks: list[dict[str, Any]]) -> str:
         """

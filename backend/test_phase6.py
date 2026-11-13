@@ -1,5 +1,9 @@
 """阶段6 集成测试（含降级模式：PG不可用时不报错）"""
-import httpx, json, tempfile, os
+import json
+import os
+import tempfile
+
+import httpx
 
 BASE = 'http://localhost:8000/api/v1'
 

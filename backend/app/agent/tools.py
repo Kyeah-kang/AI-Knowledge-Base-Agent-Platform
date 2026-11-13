@@ -18,6 +18,7 @@ import ast
 import json
 import logging
 import math
+from typing import Any
 
 import httpx
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ─── 工具定义（给 LLM 的 JSON Schema） ───
 
 # 系统级工具定义（始终可用）
-_SYSTEM_TOOLS = [
+_SYSTEM_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
@@ -94,16 +95,45 @@ _SYSTEM_TOOLS = [
 ]
 
 # 动态工具注册表（从数据库加载的工具会合并到这里）
-_dynamic_tools: list[dict] = []
+_dynamic_tools: list[dict[str, Any]] = []
 
 
 def get_tool_definitions() -> list[dict]:
     """
-    获取所有可用工具定义（系统工具 + 动态工具）。
+    获取**真正可执行**的工具定义（系统工具 + 有 executor 的动态工具）。
 
-    OpenAI / DeepSeek API 的 tools 参数格式。
+    两条硬规则：
+
+    1. **去重**（否则 Agent 全挂）：
+       `scripts/seed_data.py` 会把 3 个内建工具写进 `agent_tools` 表。启动后这些行被
+       注册成"动态工具"，与 `_SYSTEM_TOOLS` 同名 → 送给上游的 tools 数组出现重名
+       → DeepSeek 返回 `400 Tool names must be unique` → 所有 Agent 请求失败。
+
+    2. **没有 executor 的动态工具不暴露**（P1-7）：
+       数据库里的工具只存 schema，没有对应实现。把它交给 LLM，模型一调就得到
+       "未知工具"，既浪费一轮调用，也会让用户看到一个本可以避免的失败。
+       这类工具仍然留在管理端展示（`/agent/tools`），只是不进 LLM 的 tools 列表。
     """
-    return _SYSTEM_TOOLS + _dynamic_tools
+    merged = list(_SYSTEM_TOOLS)
+    seen = {(t.get("function") or {}).get("name") for t in merged}
+
+    for tool in _dynamic_tools:
+        name = (tool.get("function") or {}).get("name")
+        if not name:
+            logger.warning("忽略缺少 name 的动态工具定义: %s", tool)
+            continue
+        if name in seen:
+            logger.warning("忽略同名动态工具 '%s'（已由系统工具提供）", name)
+            continue
+        if name not in _TOOL_EXECUTORS:
+            logger.info(
+                "动态工具 '%s' 没有 executor 实现，不暴露给 LLM（仅管理端可见）", name
+            )
+            continue
+        seen.add(name)
+        merged.append(tool)
+
+    return merged
 
 
 def register_dynamic_tools(tools: list[dict]) -> None:
@@ -136,7 +166,7 @@ async def execute_tool(tool_call: dict, context: dict | None = None) -> str:
             }
         context: 可选的上下文信息，包含：
             - retriever: Retriever 实例（用于 knowledge_retrieval）
-            - kb_ids: 知识库 ID 列表
+            - document_ids: 允许检索的文档 ID 列表（**必填**，缺失则拒绝检索）
             - pg_db: PostgreSQL 会话
 
     返回：
@@ -150,15 +180,11 @@ async def execute_tool(tool_call: dict, context: dict | None = None) -> str:
 
     logger.info(f"执行工具: {func_name}({json.dumps(args, ensure_ascii=False)})")
 
-    tool_map = {
-        "web_search": _execute_web_search,
-        "calculator": _execute_calculator,
-        "knowledge_retrieval": _execute_knowledge_retrieval,
-    }
-
-    executor = tool_map.get(func_name)
+    executor = _TOOL_EXECUTORS.get(func_name)
     if not executor:
-        return f"错误：未知工具 '{func_name}'，可用工具：{', '.join(tool_map.keys())}"
+        return (
+            f"错误：未知工具 '{func_name}'，可用工具：{', '.join(_TOOL_EXECUTORS.keys())}"
+        )
 
     try:
         result = await executor(args, context)
@@ -334,13 +360,18 @@ async def _execute_knowledge_retrieval(args: dict, context: dict | None = None) 
 
     retriever: Retriever | None = context.get("retriever") if context else None
     if not retriever or not retriever.embedder.is_available:
-        return "知识库检索不可用：Embedding 服务未配置或不可用"
+        return "知识库检索不可用：本次对话没有选定知识库，或 Embedding 服务未配置"
+
+    # P0-3：检索范围必须显式给定。缺失就拒绝执行，绝不退化成"全库检索"——
+    # 那会把其他知识库（以及其他用户）的内容一并捞出来。
+    doc_ids = context.get("document_ids") if context else None
+    if not doc_ids:
+        return (
+            "知识库检索不可用：本次对话没有可检索的文档范围。"
+            "请先选择知识库，并确认库内存在处理完成的文档。"
+        )
 
     try:
-        # 如果指定了知识库 ID 范围，传递 document_ids
-        kb_ids = context.get("kb_ids") if context else None
-        doc_ids = context.get("document_ids") if context else None
-
         result = await retriever.retrieve_with_details(
             query=query,
             top_k=top_k,
@@ -364,3 +395,13 @@ async def _execute_knowledge_retrieval(args: dict, context: dict | None = None) 
     except Exception as e:
         logger.exception("知识库检索失败")
         return f"知识库检索出错：{str(e)}"
+
+# ─── 工具执行器注册表（P1-7） ───
+# 只有登记在这里的工具才真的能执行。
+# 数据库 `agent_tools` 表里的工具目前只存 schema、没有实现，
+# 所以 `get_tool_definitions()` 不会把它们交给 LLM —— 否则模型会调到一个必然失败的工具。
+_TOOL_EXECUTORS: dict[str, Any] = {
+    "web_search": _execute_web_search,
+    "calculator": _execute_calculator,
+    "knowledge_retrieval": _execute_knowledge_retrieval,
+}

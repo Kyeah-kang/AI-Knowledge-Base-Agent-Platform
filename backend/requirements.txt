@@ -1,45 +1,62 @@
+# ─────────────────────────────────────────────────────────────
+# 依赖锁定（2026-10-28 按 .venv 实测版本重新生成）
+#
+# 背景：旧文件停留在一年前的版本（fastapi 0.115 / openai 1.50 / langgraph 0.2），
+# 与实际环境（fastapi 0.136 / openai 2.41 / langgraph 1.2）严重脱节，
+# 新机器 `pip install -r requirements.txt` 装不出能跑的环境（P0-9）。
+#
+# 约定：
+#   1. 只写运行时真正 import 的包；测试工具单独分组在末尾
+#   2. 升级依赖时同步跑 `pytest` 并更新本文件，不要只改一处
+#   3. `langchain-text-splitters` 才是切片器的真实依赖，
+#      `langchain` / `langchain-community` 项目并未使用（已移除）
+# ─────────────────────────────────────────────────────────────
+
 # ─── Web 框架 ───
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-python-multipart==0.0.12
+fastapi==0.136.3
+uvicorn==0.49.0
+python-multipart==0.0.32
 
 # ─── 数据库 ───
-sqlalchemy[asyncio]==2.0.35
-asyncpg==0.30.0
-aiomysql==0.2.0
-pymysql==1.1.1
-alembic==1.13.0
-redis==5.1.0
+sqlalchemy[asyncio]==2.0.50
+asyncpg==0.31.0
+aiomysql==0.3.2
+pymysql==1.2.0
+alembic==1.18.4
+redis==8.0.0
 
-# ─── 认证 ───
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt>=4.1.0,<5.0.0
+# ─── 认证 / 加密 ───
+python-jose==3.5.0
+passlib==1.7.4
+bcrypt==4.3.0
+# cryptography 是 MySQL 8 caching_sha2_password 认证的硬依赖，
+# 缺失会让所有数据库连接直接失败（RuntimeError: 'cryptography' package is required）
+cryptography==50.0.2
 
 # ─── Pydantic ───
-pydantic==2.9.0
-pydantic-settings==2.5.0
+pydantic==2.13.4
+pydantic-settings==2.14.1
 
-# ─── LLM / AI ───
-openai==1.50.0
-langchain==0.3.0
-langchain-community==0.3.0
-langgraph==0.2.0
+# ─── LLM / Agent ───
+openai==2.41.1
+langgraph==1.2.4
+langchain-text-splitters==1.1.2
 
 # ─── RAG / 向量 ───
 pgvector==0.4.2
 
 # ─── 文档解析 ───
 pypdf2==3.0.1
-python-docx==1.1.2
-markdown==3.5.0
+python-docx==1.2.0
+markdown==3.10.2
 
 # ─── 工具 ───
-httpx==0.27.0
-python-dotenv==1.0.0
-python-dateutil==2.9.0
+httpx==0.28.1
+python-dotenv==1.2.2
+python-dateutil==2.9.0.post0
 
-# ─── 测试 ───
-pytest==8.3.0
-pytest-asyncio==0.24.0
-httpx==0.27.0
+# ─── 测试（可选安装） ───
+pytest==9.2.0
+pytest-asyncio==1.4.1
+pytest-cov==7.1.0
+coverage==7.17.0

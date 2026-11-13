@@ -13,10 +13,12 @@ class FakeLLM:
     def build_messages(self, user_content, history=None, system_prompt=None):
         return [{"role": "user", "content": user_content}]
 
-    async def chat_with_tools(self, messages, tools):
+    async def chat_with_tools_stream(self, messages, tools=None, model=None):
+        """P1-6 之后 Agent 走流式工具调用：产出 ("token", ...) / ("tool_calls", ...)"""
         self.messages_seen.append(messages)
         self.tools_seen.append(tools)
-        return {"type": "content", "content": "ok"}
+        yield ("token", "ok")
+        # 没有 tool_calls → 这一轮就是最终回答
 
 
 async def _noop(*args, **kwargs):
@@ -27,15 +29,26 @@ async def _owner(*args, **kwargs):
     return object()
 
 
+async def _create(*args, **kwargs):
+    """message_repo.create 的返回值现在会被用到（取 id 用于排除当前消息）"""
+    return SimpleNamespace(id=101, role="user", content=kwargs.get("content", ""))
+
+
+async def _recent_history(*args, **kwargs):
+    return []
+
+
 def test_chat_stream_passes_tool_definitions_to_llm():
     async def run():
         service = object.__new__(AgentService)
         llm = FakeLLM()
         service.llm = llm
         service._ensure_tools_synced = _noop
-        service.session_repo = SimpleNamespace(verify_owner=_owner)
-        service.message_repo = SimpleNamespace(create=_noop)
-        service._get_context_messages = _noop
+        service.session_repo = SimpleNamespace(verify_owner=_owner, touch=_noop)
+        # P0-2 后，历史由 services/message_context.load_history 读取
+        service.message_repo = SimpleNamespace(
+            create=_create, get_recent_history=_recent_history
+        )
         service._retrieve_rag_context = _noop
         service._rag_retriever = None
 

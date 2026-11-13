@@ -1,17 +1,21 @@
 // Agent 对话页面 — 工具调用可视化 + SSE 流式
 
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Input, Button, Card, Select, Space, Typography, message, Spin, Tag, Collapse,
 } from "antd";
 import {
-  SendOutlined, RobotOutlined, GlobalOutlined, CalculatorOutlined,
+  SendOutlined, RobotOutlined, GlobalOutlined, CalculatorOutlined, StopOutlined,
   BookOutlined, LoadingOutlined,
 } from "@ant-design/icons";
 import { getKnowledgeBases } from "../api/knowledgeBase";
 import { useSSE } from "../hooks/useSSE";
+import { API_BASE } from "../api/client";
+import MarkdownMessage from "../components/MarkdownMessage";
 import { getAgentTools } from "../api/agent";
 import type { AgentTool } from "../api/agent";
+import { getSessionDetail } from "../api/chat";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -53,8 +57,15 @@ export default function AgentChat() {
   const [streamContent, setStreamContent] = useState("");
   const [currentToolCalls, setCurrentToolCalls] = useState<ToolCallItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { connect } = useSSE();
+  const { connect, stop } = useSSE();
   const msgIdRef = useRef(0);
+
+  const [searchParams] = useSearchParams();
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  // 用 ref 保存"最新值"：onDone 是连接建立那一刻形成的闭包，读不到之后的 state 更新。
+  // 这正是 P0-5「流式结束后答案变空」的根因。
+  const streamContentRef = useRef("");
+  const toolCallsRef = useRef<ToolCallItem[]>([]);
 
   useEffect(() => {
     const init = async () => {
@@ -78,6 +89,30 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamContent, currentToolCalls]);
 
+  // 从 URL 的 session_id 恢复历史（刷新页面后对话仍然在，而不是白屏）
+  useEffect(() => {
+    const sid = searchParams.get("session_id");
+    if (!sid) return;
+
+    const loadHistory = async () => {
+      try {
+        const res = await getSessionDetail(Number(sid));
+        const detail = res.data.data;
+        setSessionId(detail.id);
+        setMessages(
+          detail.messages.map((m) => ({
+            id: ++msgIdRef.current,
+            role: m.role,
+            content: m.content,
+          }))
+        );
+      } catch {
+        message.error("加载历史对话失败");
+      }
+    };
+    loadHistory();
+  }, [searchParams]);
+
   const nextId = () => ++msgIdRef.current;
 
   const getToolIcon = (name: string) => toolIcons[name] || <RobotOutlined />;
@@ -97,52 +132,88 @@ export default function AgentChat() {
     setIsStreaming(true);
     setStreamContent("");
     setCurrentToolCalls([]);
+    streamContentRef.current = "";
+    toolCallsRef.current = [];
 
-    let kbParam = "";
-    if (selectedKbIds.length > 0) {
-      kbParam = `&kb_ids=${selectedKbIds.join(",")}`;
-    }
+    // 消息内容与 session_id 都走 POST body（P1-12）
+    const url = `${API_BASE}/agent/chat/stream`;
 
-    const url = `${import.meta.env.VITE_API_BASE_URL}/agent/chat/stream?content=${encodeURIComponent(userContent)}${kbParam}`;
-
-    connect(url, {
-      onToolCall: (data) => {
-        setCurrentToolCalls((prev) => [
-          ...prev,
-          { name: data.name, arguments: data.arguments, status: "running" },
-        ]);
-      },
-      onToolResult: (data) => {
-        setCurrentToolCalls((prev) =>
-          prev.map((tc) =>
+    connect(
+      url,
+      {
+        onSession: (data) => {
+          // 后端首次会新建会话并回传 id，记住它，后续追问才在同一个会话里
+          if (data?.session_id) setSessionId(data.session_id);
+        },
+        onToolCall: (data) => {
+          toolCallsRef.current = [
+            ...toolCallsRef.current,
+            { name: data.name, arguments: data.arguments, status: "running" },
+          ];
+          setCurrentToolCalls(toolCallsRef.current);
+        },
+        onToolResult: (data) => {
+          toolCallsRef.current = toolCallsRef.current.map((tc) =>
             tc.name === data.name
-              ? { ...tc, result: data.result, status: "done" }
+              ? { ...tc, result: data.result, status: "done" as const }
               : tc
-          )
-        );
+          );
+          setCurrentToolCalls(toolCallsRef.current);
+        },
+        onToken: (token) => {
+          streamContentRef.current += token;
+          setStreamContent(streamContentRef.current);
+        },
+        onDone: () => {
+          // 从 ref 读最新值：闭包里的 streamContent / currentToolCalls 是连接建立那一刻的旧值
+          const finalContent = streamContentRef.current;
+          const finalToolCalls = toolCallsRef.current;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              content: finalContent,
+              toolCalls: finalToolCalls.length > 0 ? [...finalToolCalls] : undefined,
+            },
+          ]);
+          setIsStreaming(false);
+          setStreamContent("");
+          setCurrentToolCalls([]);
+          streamContentRef.current = "";
+          toolCallsRef.current = [];
+        },
+        onError: (msg) => {
+          message.error(msg);
+          // 已经收到的部分回答不要丢：追加一条带中断说明的消息
+          const partial = streamContentRef.current;
+          if (partial) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "assistant",
+                content: `${partial}\n\n（生成中断：${msg}）`,
+              },
+            ]);
+          }
+          setIsStreaming(false);
+          setStreamContent("");
+          setCurrentToolCalls([]);
+          streamContentRef.current = "";
+          toolCallsRef.current = [];
+        },
       },
-      onToken: (token) => {
-        setStreamContent((prev) => prev + token);
-      },
-      onDone: () => {
-        setIsStreaming(false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: "assistant",
-            content: streamContent,
-            toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
-          },
-        ]);
-        setStreamContent("");
-        setCurrentToolCalls([]);
-      },
-      onError: (msg) => {
-        message.error(msg);
-        setIsStreaming(false);
-      },
-    });
+      {
+        // 消息内容与 session_id 都走 body
+        method: "POST",
+        body: {
+          content: userContent,
+          session_id: sessionId,
+          knowledge_base_ids: selectedKbIds,
+        },
+      }
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -303,14 +374,13 @@ export default function AgentChat() {
                           borderRadius: 12,
                           background: "#f0f0f0",
                           color: "#333",
-                          whiteSpace: "pre-wrap",
                           wordBreak: "break-word",
                           fontSize: 14,
                           lineHeight: 1.6,
                         }}
                       >
                         <div style={{ fontWeight: 500, marginBottom: 4, fontSize: 12, opacity: 0.7 }}>AI</div>
-                        {msg.content}
+                        <MarkdownMessage content={msg.content} />
                       </div>
                     </div>
                   </div>
@@ -374,7 +444,7 @@ export default function AgentChat() {
                 }}
               >
                 <div style={{ fontWeight: 500, marginBottom: 4, fontSize: 12, opacity: 0.7 }}>AI</div>
-                {streamContent}
+                <MarkdownMessage content={streamContent} />
                 <Spin size="small" style={{ marginLeft: 4 }} />
               </div>
             </div>
@@ -394,15 +464,21 @@ export default function AgentChat() {
             disabled={isStreaming}
           />
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={handleSend}
-              loading={isStreaming}
-              disabled={!input.trim()}
-            >
-              发送
-            </Button>
+            {isStreaming ? (
+              // P2-10：生成中可停止，已收到的内容会保留
+              <Button danger icon={<StopOutlined />} onClick={stop}>
+                停止生成
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={handleSend}
+                disabled={!input.trim()}
+              >
+                发送
+              </Button>
+            )}
           </div>
         </div>
       </Card>

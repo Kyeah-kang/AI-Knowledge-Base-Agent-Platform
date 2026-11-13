@@ -1,5 +1,5 @@
 """
-速率限制（Rate Limiting）— 基于 Redis 滑动窗口算法
+速率限制（Rate Limiting）— 基于 Redis 的双窗口加权滑动窗口
 
 防止接口被恶意高频调用，保护后端服务。
 
@@ -19,15 +19,15 @@
     if not allowed:
         return {"code": 429, "message": "请求过于频繁"}
 
-滑动窗口原理：
-  时间被分为连续的窗口（如 60 秒一个窗口）
-  用 Redis 的 INCR + EXPIRE 记录每个窗口内的请求数
-  检查时：当前窗口 + 上一个窗口的请求数加权求和
+算法原理（双窗口加权）：
+  时间被切成连续窗口（如 60 秒一个）
+  每个窗口一个计数器（INCR + EXPIRE，O(1)、原子）
+  判定时把"当前窗口计数"与"上一窗口计数 × 剩余权重"相加，
+  得到近似滑动窗口的估算值 —— 避免固定窗口在交界处双倍放行
 """
 
 import logging
 import time
-from typing import Tuple
 
 from app.core.redis_client import redis_manager
 
@@ -42,9 +42,9 @@ DEFAULT_WINDOW: int = 60            # 时间窗口（秒）
 
 class RateLimiter:
     """
-    速率限制器 — 基于 Redis 的滑动窗口实现
+    速率限制器 — 双窗口加权滑动窗口
 
-    线程安全、原子操作、低开销。
+    原子操作（INCR/GET）、低开销；Redis 不可用时 fail-open 并记指标。
     """
 
     def __init__(self):
@@ -55,7 +55,7 @@ class RateLimiter:
         user_id: int,
         limit: int = DEFAULT_USER_LIMIT,
         window: int = DEFAULT_WINDOW,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """
         检查用户级别的速率限制。
 
@@ -76,7 +76,7 @@ class RateLimiter:
         ip: str,
         limit: int = DEFAULT_IP_LIMIT,
         window: int = DEFAULT_WINDOW,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """检查 IP 级别的速率限制"""
         return await self._check(f"rate:ip:{ip}", limit, window)
 
@@ -84,7 +84,7 @@ class RateLimiter:
         self,
         limit: int = DEFAULT_GLOBAL_LIMIT,
         window: int = DEFAULT_WINDOW,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """检查全局速率限制"""
         return await self._check("rate:global", limit, window)
 
@@ -93,55 +93,80 @@ class RateLimiter:
         key: str,
         limit: int,
         window: int,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """
-        滑动窗口速率检查核心逻辑。
+        滑动窗口限流（双窗口加权近似）。
 
-        用 Redis INCR 实现原子计数器，配合 EXPIRE 自动过期。
-        不使用复杂的 Sorted Set，以保持低开销。
+        为什么不是固定窗口（原实现）：
+          固定窗口在交界处可以**双倍放行** —— 窗口末尾打满 + 下个窗口开头再打满，
+          实际是 2×limit。原注释写着"滑动窗口"，实现却是固定窗口，属于注释撒谎。
 
-        流程：
-          1. INCR 当前窗口计数器
-          2. 如果是第一次（返回 1），设置过期时间
-          3. 判断是否超过限制
+        为什么不用 ZSET 精确滑窗：
+          每个请求都要 ZREMRANGEBYSCORE + ZCARD + ZADD + EXPIRE 四条命令并维护集合，
+          开销明显更大。双窗口加权（当前窗口计数 + 上一窗口计数 × 剩余权重）
+          误差不超过一个窗口内的均匀分布假设，足以压住突发流量，且只要 O(1) 三条命令。
+
+        降级（fail-open）：Redis 不可用时放行，并记指标 —— 限流失效总好过整站不可用。
         """
-        if not self._redis.is_available:
-            # Redis 不可用时放行（降级：不限制）
+        from app.core import metrics
+
+        client = await self._redis.get_client()
+        if client is None:
+            metrics.incr("rate_limit_total", status="redis_unavailable")
             return True, limit
 
         try:
-            # 当前时间窗口的键名
-            window_key = f"{key}:{int(time.time() // window)}"
+            now = time.time()
+            current_window = int(now // window)
+            elapsed = now - current_window * window
+            prev_weight = 1 - elapsed / window       # 上一窗口还剩多少权重
 
-            # 原子自增
-            count = await self._redis.increment(window_key)
-            if count is None:
+            current_key = f"{key}:{current_window}"
+            previous_key = f"{key}:{current_window - 1}"
+
+            count_current = await self._redis.increment(current_key)
+            if count_current is None:
+                metrics.incr("rate_limit_total", status="redis_unavailable")
                 return True, limit
 
-            # 如果是窗口内的第一次请求，设置过期时间
-            if count == 1:
-                await self._redis.expire(window_key, window * 2)
+            if count_current == 1:
+                # 留两个窗口，保证作为"上一窗口"时还没过期
+                await self._redis.expire(current_key, window * 2)
 
-            # 计算剩余配额
-            remaining = max(0, limit - count)
-            allowed = count <= limit
+            previous_raw = await self._redis.get(previous_key)
+            try:
+                count_previous = int(previous_raw or 0)
+            except (TypeError, ValueError):
+                count_previous = 0
 
+            estimated = count_current + count_previous * prev_weight
+            allowed = estimated <= limit
+            remaining = max(0, int(limit - estimated))
+
+            metrics.incr("rate_limit_total", status="allow" if allowed else "deny")
             if not allowed:
-                logger.warning(f"速率限制触发: {key} (count={count}, limit={limit})")
+                logger.warning(
+                    "速率限制触发: %s (estimated=%.1f, limit=%s)",
+                    key,
+                    estimated,
+                    limit,
+                )
 
             return allowed, remaining
 
         except Exception as e:
+            metrics.incr("rate_limit_total", status="error")
             logger.warning(f"速率检查异常（放行）: {e}")
             return True, limit
 
 
 # ─── FastAPI 中间件 ───
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.types import ASGIApp
+# 这些 import 故意放在文件末尾：rate_limiter 顶层被 app.core 引用，
+# 而 starlette 的中间件基类会反向 import，放在顶部会形成循环依赖。
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.requests import Request  # noqa: E402
+from starlette.responses import JSONResponse  # noqa: E402
+from starlette.types import ASGIApp  # noqa: E402
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

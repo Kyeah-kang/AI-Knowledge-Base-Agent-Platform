@@ -22,7 +22,7 @@ mysql_engine = create_async_engine(
     pool_size=settings.DB_POOL_SIZE,              # 连接池保持的连接数，避免反复创建新连接
     max_overflow=settings.DB_MAX_OVERFLOW,        # 高峰时允许额外创建的连接数（总共 pool_size + max_overflow）
     pool_pre_ping=settings.DB_POOL_PRE_PING,      # 取出连接前先执行 SELECT 1 验证连接是否有效
-    echo=settings.DEBUG,
+    echo=settings.DB_ECHO_SQL,
 )
 
 # 会话工厂
@@ -39,7 +39,7 @@ pg_engine = create_async_engine(
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_pre_ping=settings.DB_POOL_PRE_PING,
-    echo=settings.DEBUG,
+    echo=settings.DB_ECHO_SQL,
 )
 
 PostgreSQLAsyncSessionLocal = async_sessionmaker(
@@ -87,7 +87,13 @@ async def get_mysql_db() -> AsyncSession:
 
 
 async def get_pg_db() -> AsyncSession:
-    """FastAPI 依赖注入：获取 PostgreSQL 会话（向量数据）"""
+    """
+    获取 PostgreSQL 会话（向量数据）。
+
+    注意：HTTP 请求路径请用 `app.core.deps.get_vector_db` —— 它在本函数之上增加了
+    "拿不到会话时降级为 None" 的能力，并且**不会**把路由抛出的业务异常吞掉。
+    本函数保留给脚本与后台任务直接使用。
+    """
     async with PostgreSQLAsyncSessionLocal() as session:
         try:
             yield session

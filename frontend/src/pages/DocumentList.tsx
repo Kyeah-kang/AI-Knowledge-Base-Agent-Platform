@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Table, Button, Upload, Card, Typography, Space, Popconfirm, message, Tag, Modal, List,
+  Table, Button, Upload, Card, Typography, Space, Popconfirm, message, Tag, Modal, List, Tooltip,
 } from "antd";
 import { UploadOutlined, DeleteOutlined, EyeOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { getDocuments, uploadDocument, deleteDocument, getDocumentDetail } from "../api/document";
@@ -45,8 +45,15 @@ export default function DocumentList() {
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
-      await uploadDocument(Number(kbId), file);
-      message.success("上传成功");
+      const res = await uploadDocument(Number(kbId), file);
+      const result = res.data.data;
+      // 后端在"上传成功但处理失败"时返回 status=failed + 具体原因，
+      // 这里必须用 warning 而不是 success —— 否则用户会以为文档已经可以检索了。
+      if (result?.document?.status === "failed") {
+        message.warning(result.message || "文档已上传，但处理失败");
+      } else {
+        message.success(result?.message || "上传成功");
+      }
       fetchData(page);
     } catch (err: any) { message.error(err.response?.data?.message || "上传失败"); }
     finally { setUploading(false); }
@@ -79,7 +86,13 @@ export default function DocumentList() {
     { title: "文件名", dataIndex: "filename", key: "filename", ellipsis: true },
     { title: "类型", dataIndex: "file_type", key: "file_type", width: 80, render: (t: string) => <Tag>{t.toUpperCase()}</Tag> },
     { title: "大小", dataIndex: "file_size", key: "file_size", width: 100, render: (s: number) => formatSize(s) },
-    { title: "状态", dataIndex: "status", key: "status", width: 100, render: (s: string) => <Tag color={statusColor[s] || "default"}>{s}</Tag> },
+    { title: "状态", dataIndex: "status", key: "status", width: 120, render: (s: string) => (
+      s === "failed" ? (
+        <Tooltip title="处理失败：该文档没有生成向量，检索不到。请查看上传时的提示或后端日志后重新上传。">
+          <Tag color="red">failed</Tag>
+        </Tooltip>
+      ) : <Tag color={statusColor[s] || "default"}>{s}</Tag>
+    ) },
     { title: "切片数", dataIndex: "chunk_count", key: "chunk_count", width: 80, render: (c: number) => c || "-" },
     { title: "上传时间", dataIndex: "created_at", key: "created_at", width: 170, render: (t: string) => new Date(t).toLocaleString("zh-CN") },
     {

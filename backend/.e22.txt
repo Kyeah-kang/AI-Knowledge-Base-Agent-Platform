@@ -1,0 +1,9 @@
+﻿base=http://127.0.0.1:8002
+  /docs            -> 404  {"code":404,"message":"Not Found","data":null}
+  /openapi.json    -> 404  {"code":404,"message":"Not Found","data":null}
+  /redoc           -> 404  {"code":404,"message":"Not Found","data":null}
+  /health          -> 200  {"status":"healthy","dependencies":{"mysql":{"status":"up","latency_ms":26.31},"
+  /                -> 200  {"code":200,"message":"success","data":{"name":"AI Knowledge Base Agent Platform
+
+  ✓ 生产模式：/docs 与 /openapi.json 均 404（统一信封），/health 正常
+ALL ASSERTIONS PASSED

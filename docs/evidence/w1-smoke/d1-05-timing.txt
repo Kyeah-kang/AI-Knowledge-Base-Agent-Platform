@@ -1,0 +1,46 @@
+# D1 步骤5（注册/登录）证据记录
+日期：2026-10-23（周五）   操作人：用户   记录人：教练（客观数据由截图抄录，未编造）
+
+## 环境
+- 前端：http://localhost:3000（Edge InPrivate；Disable cache 已勾，Preserve log 已勾，过滤 Fetch/XHR）
+- 后端：http://localhost:8000（uvicorn，pid 195304；启动参数 --host 127.0.0.1 --port 8000 --log-level debug，**未带 --reload**）
+- 数据服务：MySQL82 Running / kb-postgres-published Up / kb-redis Up
+
+## 客观耗时（来源：Network 面板截图 d1-05-c、d1-05-h）
+POST /api/v1/auth/register                     Status=200   Time=1050 ms  (1.05 秒)
+POST /api/v1/auth/login                        Status=200   Time=545 ms   (auth.ts:29)
+GET  /api/v1/knowledge-bases?page=1...         Status=200   Time=66 / 38 / 60 / 22 / 36 ms
+GET  /api/v1/chat/sessions?page=1&page_size=... Status=200  Time=2140 / 1790 / 1740 ms   <-- 偏慢，基线留存
+GET  /api/v1/agent/tools?enabled_only=true     Status=200   Time=1770 ms                <-- 偏慢，基线留存
+
+## 两条链路（分开验，结论不同）
+1) 注册 -> 自动登录：通过
+   - register 200/1050ms -> 前端存 token -> /dashboard，页面提示"登录成功"（d1-05-c、d1-05-h）
+   - 自动登录的代码原因：backend/app/routers/v1/auth.py:32-39（register 返回 TokenResponse）
+     + frontend/src/api/auth.ts:31-32 + frontend/src/pages/Register.tsx:25-28
+2) 既有用户登录：通过
+   - login 200/545ms（auth.ts:29），进 /dashboard，Network 中 register 与 login 各出现一次（d1-05-h）
+
+是否需要二次登录：否（注册即登录，属设计选择；代价是注册分支只验证了"发 token"，未验证"验密码"）
+
+## Console 核对（d1-05-i）
+- 错误总数 2 条，全部为 antd 弃用告警，无 fetch/CORS/401 类错误：
+  - `[antd: Space] direction is deprecated` @ Login.tsx:44
+  - `[antd: List] The List component is deprecated` @ Dashboard.tsx:68
+- 交叉验证：`frontend/src` 内 grep `console.(error|warn)` 无任何匹配 => 应用代码不主动打错误，上述为依赖库噪音。
+- 结论：Console 噪音已排除；真实接口错误 0 条。
+
+## 刷新保持登录（仅代码证据，未实测）
+- frontend/src/utils/token.ts:1-36  token 存 localStorage（access_token / refresh_token / user_info）
+- frontend/src/store/authStore.ts:36  初始 isAuthenticated 由 getAccessToken() 决定；:60-65 init() 读回 user_info
+- frontend/src/api/client.ts:15-21   每次请求自动带 Authorization
+- frontend/src/api/client.ts:24-56   401 时用 refresh_token 自动刷新，失败则 clearAuth + 跳 /login
+=> 预期 F5 后仍登录；**缺一张实测截图**，已记入遗留问题池。
+
+## 结论
+- 注册链路：通过（真实写 MySQL，分配 user id=7，用户名 kangkang）
+- 登录链路：通过（200 / 545ms）
+- 跨域：通过（3000 -> 8000 全 2xx，无 CORS 报错）
+- token 落地：通过（/profile 拉到 用户ID=7）
+- 新用户数据隔离：通过（dashboard 知识库/文档/对话全 0）
+- D1 第 5 行：✅ 完成（附加项 F5 刷新实测、秒表主观耗时 待补，不影响本行验收）

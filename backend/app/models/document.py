@@ -8,7 +8,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # 同时导入两个 Base，分别用于两个数据库
@@ -68,6 +68,18 @@ class Document(MySQLBase):
         Integer, default=0, comment="切片数量"
     )
 
+    # 最近一次处理失败的原因（成功时清空）。
+    # 之前失败原因只写进响应和日志，过几天回看就只知道"failed"、不知道为什么（P0-1 遗留）。
+    error_message: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="最近一次处理失败的原因（成功后清空）"
+    )
+
+    # 文件内容 sha256，用于同一知识库内的内容去重：
+    # 同一份文件反复上传会重复切片、重复消耗 embedding 费用（P0-8 遗留）。
+    file_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True, comment="文件内容 sha256（用于同库去重）"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, nullable=False, comment="创建时间（UTC）"
     )
@@ -123,8 +135,8 @@ class DocumentChunk(PostgreSQLBase):
         embedding: Mapped[list[float] | None] = mapped_column(
             Vector(settings.EMBEDDING_DIMENSION), nullable=True, comment="向量嵌入"
         )
-    else:
-        embedding: Mapped[str | None] = mapped_column(
+    else:  # pragma: no cover - 只有未装 pgvector 的环境才会走这里
+        embedding = mapped_column(  # type: ignore[assignment]
             Text, nullable=True, comment="向量嵌入（未安装 pgvector，使用 Text 降级存储）"
         )
 

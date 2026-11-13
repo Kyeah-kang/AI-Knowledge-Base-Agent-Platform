@@ -2,11 +2,14 @@
 import asyncio
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from sqlalchemy import text
+
 from app.database.base import PostgreSQLBase
 from app.database.session import pg_engine
+
 
 async def main():
     async with pg_engine.begin() as conn:

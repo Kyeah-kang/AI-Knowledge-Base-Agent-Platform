@@ -3,7 +3,6 @@
 """
 
 from app.core.exceptions import AppException
-from app.core.security import hash_password
 from app.repositories.user_repo import UserRepository
 from app.schemas.user import UpdateUserRequest, UserResponse
 

@@ -1,0 +1,132 @@
+# ═══════════════════════════════════════════════════════════════════════
+# 本地一键起全栈：nginx(frontend) → backend → mysql / postgres(pgvector) / redis
+#
+# 设计要点（都是踩过坑总结的）：
+#   1. 数据库**不发布端口**：避免和 Windows MySQL82(3306)、kb-postgres(5432)、
+#      kb-redis(6379) 冲突；生产也不该把库暴露到宿主机
+#   2. 项目名 ai-kb → 卷/网络/容器全部带 ai-kb_ 前缀，绝不与其它项目共享
+#   3. healthcheck + depends_on(service_healthy)：没有它 backend 会比数据库先起
+#   4. 迁移写在 backend 启动命令里：保证"表结构先于应用就绪"
+#      （生产上应拆成独立 job，否则多副本会并发迁移）
+#   5. 前端只发布 80；API 走 nginx 同源反代 /api → 不需要 CORS
+# ═══════════════════════════════════════════════════════════════════════
+name: ai-kb
+
+services:
+  # ─────────── MySQL（业务库，版本与本机 MySQL82 对齐）───────────
+  mysql:
+    image: "${MYSQL_IMAGE:-mysql:8.2}"
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # $$ 是转义：让容器内的 sh 去读自己的环境变量，而不是 Compose 提前插值
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks: [kb-net]
+
+  # ─────────── PostgreSQL（向量库，镜像自带 pgvector）───────────
+  postgres:
+    image: "${PG_IMAGE:-pgvector/pgvector:pg16}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [kb-net]
+
+  # ─────────── Redis（缓存 / 限流 / refresh 轮换 / 登录锁定）───────────
+  redis:
+    image: "${REDIS_IMAGE:-redis:7-alpine}"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    networks: [kb-net]
+
+  # ─────────── 后端 ───────────
+  backend:
+    build:
+      context: ./backend
+    image: kb-backend:dev
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # 容器内用服务名互相访问；覆盖 .env 里的同名项
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - uploads:/app/uploads        # 上传文件必须持久化，否则重建容器就丢
+      - ./backend/logs:/app/logs    # 日志挂到宿主机，方便直接看
+    depends_on:
+      mysql: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    command: >
+      sh -c "alembic upgrade head &&
+             alembic -n postgres upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status==200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 60s           # 等两次 alembic 迁移跑完
+    networks: [kb-net]
+
+  # ─────────── 前端（nginx，唯一对外端口）───────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1   # 同源相对路径 → 浏览器不会跨域
+    image: kb-frontend:dev
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend: {condition: service_healthy}
+    networks: [kb-net]
+
+volumes:
+  mysql_data:
+  pg_data:
+  redis_data:
+  uploads:
+
+networks:
+  kb-net:
+    driver: bridge

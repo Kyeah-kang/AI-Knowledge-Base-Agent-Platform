@@ -1,0 +1,36 @@
+# D1 步骤6（新建知识库）证据记录
+日期：2026-10-23（周五）   操作人：用户   记录人：教练（数据由截图抄录）
+
+## 客观数据（来源：Network 面板，截图 d1-06-a、d1-06-b）
+POST /api/v1/knowledge-bases                    Status=200   Time=109 ms   Size=513 B
+GET  /api/v1/knowledge-bases?page=1&page_size=... Status=200 Time=69 ms    Size=559 B   <-- 保存后自动刷新，POST 之后紧跟一次 GET
+GET  /api/v1/knowledge-bases?page=1&page_size=... Status=200 Time=26 ms    Size=559 B   <-- 页面重载后再次拉取
+
+## 结果
+- 页面提示"创建成功"（d1-06-a）
+- 列表出现 1 条：ID=8，文档数=0，创建时间=2026/10/23 12:30:17，操作列含"文档""编辑"
+- 分页显示"共 1 个知识库"
+- ID 从 8 开始 => 承接 user id=7 的既有库（基线为 5 个库），新库未被其它用户数据污染
+- 列表自动刷新：POST 成功后紧接着一次 GET（69 ms），无需手动刷新 => 前端刷新逻辑正常
+
+## 发现的缺陷（新增，P2）
+现象：创建时间显示 `2026/10/23 12:30:17`，而当时本地时间约为 20:30（同日），相差 8 小时。
+根因（代码证据，待 API 原文坐实）：
+- backend/app/models/knowledge_base.py:36-43  created_at / updated_at 均 `default=utc_now`，注释写明"（UTC）"
+- 前端 frontend/src/pages/KnowledgeBaseList.tsx:83  `new Date(t).toLocaleString("zh-CN")`
+- 若后端序列化为不带时区标记的 `2026-10-23T12:30:17`，浏览器会按**本地时区**解析 => 把 UTC 值当本地时间显示
+30 秒验证法：F12 → Network → 点 `knowledge-bases?page=1...` → Response → 看 created_at 是否带 `Z` 或 `+00:00`。
+
+## 已坐实（2026-10-23，截图 d1-06-c）
+API 原文（GET /api/v1/knowledge-bases?page=1&page_size=20 的 Response）：
+  "created_at": "2026-10-23T12:30:17"     <-- 无 Z、无 +00:00
+  "updated_at": "2026-10-23T12:30:17"
+=> 后端存/返 UTC 但序列化不带时区标记；前端 KnowledgeBaseList.tsx:83 用 new Date(t) 解析，
+   浏览器按**本地时区**处理，于是把 12:30 UTC 显示成 12:30（实际本地应为 20:30）。
+=> 定性：显示层缺陷（P2），数据本身正确，不改数据、今天不修。
+同批响应还确认：id=8、name="d1-demo-kb"、owner_id=7、doc_count=0、total=1、page=1、page_size=20。
+
+## 待确认
+1. d1-06-b 是否为按 F5 之后所截？（请求数从 84 增至 142，且 KB 行仍在，倾向于是）=> 若是，则"刷新后登录态与数据均保持"证据补齐。
+2. Network 中出现 `stream?content=%E4%BD...`（fetch，200，4.89 秒），解码以 `E4 BD` 开头即中文"你"，疑似用户已尝试"普通聊天"。=> 第 8 行状态待前端显示截图确认。
+3. 同一批中 `tools?enabled_only=true` 再次 1.92 秒（与 D1-05 的 1.77 秒一致），偏慢已复现两次。

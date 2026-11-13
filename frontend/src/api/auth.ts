@@ -33,3 +33,7 @@ export const register = (data: RegisterRequest) =>
 
 export const refreshToken = (refresh_token: string) =>
   client.post<{ code: number; message: string; data: { access_token: string } }>("/auth/refresh", { refresh_token });
+
+/** 登出：服务端吊销这张 refresh token（P1-12） */
+export const logout = (refreshToken: string) =>
+  client.post<{ code: number }>("/auth/logout", { refresh_token: refreshToken });

@@ -5,8 +5,6 @@ Agent 工具数据访问层 — AgentTool 表 CRUD
 提供"工具注册表"的增删改查 + 获取已启用的工具列表。
 """
 
-import json
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -13,17 +13,18 @@
   7. 返回回复内容
 """
 
+import json
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.models.chat import ChatMessage
 from app.rag.embeddings import EmbeddingService
-from app.rag.vector_store import VectorStore
 from app.rag.retriever import Retriever
+from app.rag.vector_store import VectorStore
 from app.repositories.chat_repo import ChatMessageRepository, ChatSessionRepository
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.knowledge_base_repo import KnowledgeBaseRepository
@@ -34,7 +35,8 @@ from app.schemas.chat import (
     CreateSessionRequest,
     UpdateSessionRequest,
 )
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, resolve_model_name
+from app.services.message_context import load_history
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ class ChatService:
         query: str,
         knowledge_base_ids: list[int] | None,
         user_id: int,
-    ) -> str:
+    ) -> tuple[str, list[dict]]:
         """
         从指定知识库中检索与问题相关的文档上下文。
 
@@ -88,35 +90,93 @@ class ChatService:
             user_id: 当前用户 ID
 
         返回：
-            格式化后的上下文文本，如果不需要 RAG 则返回空字符串
-        """
-        if not knowledge_base_ids or not self._rag_retriever:
-            return ""
+            (上下文文本, 引用列表)。未指定知识库、或知识库内没有文档时返回 ("", [])。
+            引用列表用于前端渲染"引用卡片"（P2-10）：
+                [{"document_id", "document_name", "chunk_index", "similarity", "snippet"}]
 
-        if not self._rag_retriever.embedder.is_available:
-            logger.warning("RAG 检索跳过：Embedding 服务不可用")
-            return ""
+        异常：
+            RetrievalError / AppException: 选了知识库但检索链路不可用时抛出。
+            **不允许**把"检索坏了"降级成"没找到"——否则模型会拿通用知识作答，
+            而用户以为答案来自知识库。
+        """
+        # 没有选择知识库 = 普通聊天，本轮不使用 RAG，不视为失败
+        if not knowledge_base_ids:
+            return "", []
+
+        # 选了知识库但向量链路没起来：这是配置/基础设施故障，必须显式报错
+        if self._rag_retriever is None:
+            metrics.incr("rag_retrieval_total", status="unavailable")
+            logger.error("RAG 检索不可用：向量库会话缺失，但请求指定了知识库")
+            raise AppException(
+                code=503,
+                message="知识库检索不可用：向量库未连接",
+                http_status_code=503,
+            )
+
+        # 仓储与检索器是配套注入的；这里显式校验，别让 None 走到属性访问才崩
+        if self._kb_repo is None or self._doc_repo is None:  # pragma: no cover
+            metrics.incr("rag_retrieval_total", status="unavailable")
+            raise AppException(
+                code=503,
+                message="知识库检索不可用：仓储未初始化",
+                http_status_code=503,
+            )
 
         # 校验每个知识库的归属
-        all_doc_ids = []
+        all_doc_ids: list[int] = []
         for kb_id in knowledge_base_ids:
             kb = await self._kb_repo.verify_owner(kb_id, user_id)
             if not kb:
-                raise AppException(code=404, message=f"知识库不存在: {kb_id}")
+                raise AppException(
+                    code=404, message=f"知识库不存在: {kb_id}", http_status_code=404
+                )
             docs, _ = await self._doc_repo.get_by_knowledge_base(kb_id, 0, 9999)
             all_doc_ids.extend(doc.id for doc in docs)
 
         if not all_doc_ids:
+            # 知识库是空的：这不是故障，是"确实没有可检索的内容"
+            metrics.incr("rag_retrieval_total", status="no_documents")
             logger.info(f"RAG 检索跳过：知识库中没有文档（{knowledge_base_ids}）")
-            return ""
+            return "", []
 
-        # 执行检索
-        context = await self._rag_retriever.retrieve(
+        # 执行检索（失败会抛 RetrievalError，由调用方转成错误事件）
+        # 用 retrieve_with_details 而不是 retrieve：既要上下文，也要 chunk 元数据
+        detail = await self._rag_retriever.retrieve_with_details(
             query=query,
             top_k=settings.VECTOR_TOP_K,
             document_ids=all_doc_ids,
         )
-        return context
+        chunks = detail.get("chunks") or []
+        citations = await self._build_citations(chunks)
+        return detail.get("context", ""), citations
+
+    async def _build_citations(self, chunks: list[dict]) -> list[dict]:
+        """
+        把检索到的切片整理成前端能直接渲染的引用卡片。
+
+        snippet 截断到 160 字：卡片是"让人确认答案出处"，不是再读一遍原文。
+        """
+        if not chunks:
+            return []
+        if self._doc_repo is None:  # pragma: no cover - 构造函数里必注入
+            return []
+        document_ids: list[int] = [
+            int(c["document_id"]) for c in chunks if c.get("document_id")
+        ]
+        names = await self._doc_repo.get_filenames(document_ids)
+        citations = []
+        for chunk in chunks:
+            doc_id = int(chunk.get("document_id") or 0)
+            citations.append(
+                {
+                    "document_id": doc_id,
+                    "document_name": names.get(doc_id, f"文档 #{doc_id}"),
+                    "chunk_index": chunk.get("chunk_index", 0),
+                    "similarity": chunk.get("similarity", 0),
+                    "snippet": (chunk.get("content") or "")[:160],
+                }
+            )
+        return citations
 
     def _build_rag_system_prompt(self, context: str, original_prompt: str | None) -> str:
         """
@@ -186,22 +246,20 @@ class ChatService:
             user_id, skip=skip, limit=page_size
         )
 
-        # 给每个会话附加消息数量
-        result = []
-        # 遍历每一个会话，单独查询该会话下的消息总数
-        for s in sessions:
-            count = await self.message_repo.count_by_session(s.id)
-            # 封装为统一响应模型
-            result.append(
-                ChatSessionResponse(
-                    id=s.id,
-                    title=s.title,
-                    model_name=s.model_name,
-                    created_at=s.created_at,
-                    updated_at=s.updated_at,
-                    message_count=count,
-                )
+        # 一次查出本页所有会话的消息数（P1-4：原来在循环里逐个 count，是典型 N+1）
+        counts = await self.message_repo.count_by_sessions([s.id for s in sessions])
+
+        result = [
+            ChatSessionResponse(
+                id=s.id,
+                title=s.title,
+                model_name=s.model_name,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+                message_count=counts.get(s.id, 0),
             )
+            for s in sessions
+        ]
 
         return result, total
 
@@ -219,8 +277,23 @@ class ChatService:
         session = await self.session_repo.verify_owner(session_id, user_id)
         if not session:
             raise AppException(code=404, message="会话不存在")
+
         # 查询该会话下所有消息
-        messages, _ = await self.message_repo.get_by_session(session_id)
+        # P1-4：原来固定 limit=100 会**静默**截断长会话，前端以为消息丢了。
+        # 现在把上限提到配置值，并把真实总数一起返回（message_total），
+        # 被截断时至少是可观测的。
+        max_messages = settings.SESSION_DETAIL_MAX_MESSAGES
+        messages, message_total = await self.message_repo.get_by_session(
+            session_id, 0, max_messages
+        )
+        if message_total > max_messages:
+            logger.warning(
+                "会话 #%s 共 %s 条消息，超过详情上限 %s，已截断（前端应改用分页）",
+                session_id,
+                message_total,
+                max_messages,
+            )
+
         # ORM对象转为Pydantic响应模型并返回
         return ChatSessionDetailResponse(
             id=session.id,
@@ -229,6 +302,7 @@ class ChatService:
             created_at=session.created_at,
             updated_at=session.updated_at,
             messages=[ChatMessageResponse.model_validate(m) for m in messages],
+            message_total=message_total,
         )
 
     # 修改会话标题
@@ -272,6 +346,7 @@ class ChatService:
         content: str,
         system_prompt: str | None = None,
         knowledge_base_ids: list[int] | None = None,
+        model_name: str | None = None,
     ) -> ChatMessageResponse:
         """
         发送消息并获取 AI 回复（非流式，一次性返回）。
@@ -291,7 +366,7 @@ class ChatService:
             raise AppException(code=404, message="会话不存在")
 
         # 2. RAG 检索（如果指定了知识库）
-        rag_context = await self._retrieve_rag_context(
+        rag_context, citations = await self._retrieve_rag_context(
             query=content,
             knowledge_base_ids=knowledge_base_ids,
             user_id=user_id,
@@ -308,13 +383,20 @@ class ChatService:
             role="user",
             content=content,
         )
+        # 会话列表按 updated_at 排序；不更新它，刚聊过的会话永远排不到最前（P1-4）
+        await self.session_repo.touch(session_id)
 
-        # 4. 加载历史消息
-        history = await self._get_context_messages(session_id)
+        # 4. 加载历史消息（排除刚保存的当前消息，否则它会进 prompt 两次）
+        history = await load_history(
+            self.message_repo, session_id, current_message_id=user_msg.id
+        )
 
         # 5. 组装并调用 LLM
         messages = self.llm.build_messages(content, history, effective_system_prompt)
-        reply_text = await self.llm.chat(messages)
+        # P2-4：请求 > 会话 > 配置默认（LLMService 内部再校验白名单）
+        reply_text = await self.llm.chat(
+            messages, model=model_name or session.model_name
+        )
 
         # 6. 保存 AI 回复
         assistant_msg = await self.message_repo.create(
@@ -327,6 +409,7 @@ class ChatService:
         return ChatMessageResponse.model_validate(assistant_msg)
 
     # 消息发送（流式 — SSE）
+
     async def send_message_stream(
         self,
         session_id: int,
@@ -334,7 +417,49 @@ class ChatService:
         content: str,
         system_prompt: str | None = None,
         knowledge_base_ids: list[int] | None = None,
-    ) -> AsyncGenerator[str, None]:
+        model_name: str | None = None,
+    ) -> AsyncGenerator[str]:
+        """
+        SSE 流式问答（对外入口）。
+
+        为什么多包一层：
+          StreamingResponse 一旦开始输出就可能已经写回了 200 响应头，
+          生成器内部抛异常不会变成 HTTP 错误，而是**直接断流**——前端只看到连接关闭，
+          既没有回答也没有错误提示。所以这里统一把异常翻译成 `event: error`，
+          保证"失败"一定以事件形式送达客户端。
+        """
+        try:
+            async for event in self._stream_events(
+                session_id=session_id,
+                user_id=user_id,
+                content=content,
+                system_prompt=system_prompt,
+                knowledge_base_ids=knowledge_base_ids,
+                model_name=model_name,
+            ):
+                yield event
+            metrics.incr("chat_stream_total", status="ok")
+        except AppException as exc:
+            # 业务异常（如检索不可用、会话不存在）——消息可以直接给用户看
+            metrics.incr("chat_stream_total", status="error")
+            logger.warning("流式问答失败（会话 #%s）：%s", session_id, exc.message)
+            yield self._sse_error(exc.message, exc.code)
+            yield self._sse_done()
+        except Exception:
+            metrics.incr("chat_stream_total", status="error")
+            logger.exception("流式问答出现未预期异常（会话 #%s）", session_id)
+            yield self._sse_error("服务暂时不可用，请稍后重试", 500)
+            yield self._sse_done()
+
+    async def _stream_events(
+        self,
+        session_id: int,
+        user_id: int,
+        content: str,
+        system_prompt: str | None = None,
+        knowledge_base_ids: list[int] | None = None,
+        model_name: str | None = None,
+    ) -> AsyncGenerator[str]:
         """
         发送消息并流式获取 AI 回复（SSE 逐 token 推送）。
 
@@ -349,7 +474,7 @@ class ChatService:
             raise AppException(code=404, message="会话不存在")
 
         # 2. RAG 检索（如果指定了知识库）
-        rag_context = await self._retrieve_rag_context(
+        rag_context, citations = await self._retrieve_rag_context(
             query=content,
             knowledge_base_ids=knowledge_base_ids,
             user_id=user_id,
@@ -359,24 +484,35 @@ class ChatService:
         )
         if rag_context:
             logger.info(f"RAG: 找到相关上下文（会话 #{session_id}）")
-            yield f"event: rag\ndata: {{\"context_length\": {len(rag_context)}}}\n\n"
+            yield (
+                "event: rag\n"
+                f"data: {json.dumps({'context_length': len(rag_context), 'citations': citations}, ensure_ascii=False)}\n\n"
+            )
 
         # 3. 保存用户消息
-        await self.message_repo.create(
+        user_msg = await self.message_repo.create(
             session_id=session_id,
             role="user",
             content=content,
         )
+        # 会话列表按 updated_at 排序；不更新它，刚聊过的会话永远排不到最前（P1-4）
+        await self.session_repo.touch(session_id)
 
-        # 4. 加载历史消息
-        history = await self._get_context_messages(session_id)
+        # 4. 加载历史消息（排除刚保存的当前消息，否则它会进 prompt 两次）
+        history = await load_history(
+            self.message_repo, session_id, current_message_id=user_msg.id
+        )
 
         # 5. 组装并调用 LLM（流式）
         messages = self.llm.build_messages(content, history, effective_system_prompt)
 
         full_reply = ""
+        # P2-4：请求 > 会话 > 配置默认；resolve 后就是真正会用的模型名
+        effective_model = resolve_model_name(model_name or session.model_name)
         try:
-            async for token in self.llm.chat_stream(messages):
+            async for token in self.llm.chat_stream(
+                messages, model=effective_model
+            ):
                 full_reply += token
                 yield f"data: {{\"token\": \"{self._escape_json(token)}\", \"done\": false}}\n\n"
 
@@ -387,8 +523,10 @@ class ChatService:
                 content=full_reply,
             )
 
-            # 7. 发送结束信号
-            yield f"data: {{\"token\": \"\", \"done\": true}}\n\n"
+            # 7. 发送结束信号（带上实际模型，便于前端展示与排障）
+            yield (
+                f'data: {{"token": "", "done": true, "model": "{effective_model}"}}\n\n'
+            )
 
         except Exception as e:
             # 流式过程中出错，仍然保存已经收到的部分回复
@@ -401,25 +539,18 @@ class ChatService:
             yield f"data: {{\"error\": \"{self._escape_json(str(e))}\", \"done\": true}}\n\n"
 
     # 辅助方法
-    async def _get_context_messages(
-        self, session_id: int, limit: int = 20
-    ) -> list[dict]:
-        """
-        获取最近 N 条消息作为 LLM 上下文。
-
-        返回格式（LLM API 要求的格式）：
-            [
-                {"role": "user", "content": "你好"},
-                {"role": "assistant", "content": "你好！"},
-            ]
-        """
-        recent = await self.message_repo.get_recent_history(session_id, limit=limit)
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in recent
-        ]
-
     @staticmethod
     def _escape_json(s: str) -> str:
         """转义 JSON 字符串中的特殊字符"""
         return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+    @staticmethod
+    def _sse_error(message: str, code: int = 500) -> str:
+        """构造标准 SSE 错误事件（前端 useSSE 的 case "error" 会处理它）"""
+        payload = json.dumps({"message": message, "code": code}, ensure_ascii=False)
+        return f"event: error\ndata: {payload}\n\n"
+
+    @staticmethod
+    def _sse_done() -> str:
+        """构造结束事件（与普通 token 流共用同一格式，前端据此收尾）"""
+        return 'data: {"token": "", "done": true}\n\n'

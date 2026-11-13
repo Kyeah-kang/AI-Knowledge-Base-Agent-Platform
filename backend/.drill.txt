@@ -1,0 +1,19 @@
+﻿① 备份当前库 ...
+   D:\python\AI Knowledge Base Agent Platform\database-backups\20261108-204535
+② 建临时库（ai_kb_restore_test / ai_kb_vec_restore_test）...
+③ 恢复 MySQL ...
+④ 恢复 PostgreSQL ...
+⑤ 逐表比对数 ...
+
+  表              源      恢复
+  users               60      60
+  knowledge_bases      6       6
+  documents            4       4
+  chat_sessions        2       2
+  chat_messages        6       6
+  agent_tools          3       3
+  document_chunks      4       4
+
+  备份：1.39s | 恢复：1.97s
+  ✓ 演练通过：备份可完整恢复，行数与源库一致
+⑥ 清理临时库 ...

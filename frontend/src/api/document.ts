@@ -26,10 +26,16 @@ export interface DocumentDetail extends Document {
   chunks: DocumentChunk[];
 }
 
+export interface DocumentUploadResult {
+  document: Document;
+  chunk_count: number;
+  message: string;
+}
+
 export const uploadDocument = (kbId: number, file: File) => {
   const formData = new FormData();
   formData.append("file", file);
-  return client.post<{ code: number; data: any }>(
+  return client.post<{ code: number; data: DocumentUploadResult }>(
     `/knowledge-bases/${kbId}/documents`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } }

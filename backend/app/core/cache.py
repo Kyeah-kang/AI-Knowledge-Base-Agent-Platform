@@ -33,8 +33,9 @@
 import hashlib
 import json
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from app.core.redis_client import redis_manager
 

@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════════
+# 后端代码质量门禁（P2-8）
+#
+#   ruff check .        # 静态检查（快，秒级）
+#   ruff check . --fix  # 自动修可修的
+#   mypy app            # 类型检查
+#   pytest --cov=app    # 测试 + 覆盖率（见 .coveragerc）
+#
+# 设计原则：
+#   1. 规则集**保守**：只启用"真会出问题"的，不追求零噪音
+#   2. 已知历史噪音按**模块冻结**（见 mypy overrides），新代码必须干净
+#   3. 每还一笔债就把对应模块从白名单里删掉 —— 白名单只增不减就是自欺欺人
+# ═══════════════════════════════════════════════════════════════════════
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+# 迁移脚本是 autogenerate 产物，不参与风格检查
+extend-exclude = [
+    "alembic/versions_mysql",  # autogenerate 产物
+    "alembic/versions_pg",
+    "alembic",                 # env.py 的 import 顺序受 sys.path 约束，不能重排
+]
+
+[tool.ruff.lint]
+# E4/E7/E9 = 语法级错误；F = pyflakes（未使用变量/导入等真 bug）；
+# I = import 排序；UP = pyupgrade（旧写法升级）；B = bugbear（常见陷阱）
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+ignore = [
+    "B008",  # FastAPI 的 Depends()/Query() 作为默认参数是**官方写法**
+    "B904",  # raise ... from，历史代码里很多，不强制
+    "UP045", # Optional[X] → X | None，纯风格，暂不统一
+    "UP046", # PEP 695 泛型类语法，会重写类定义，暂不采用
+    "UP047", # PEP 695 泛型函数语法，同上
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里允许 assert 和"不安全"的惯用写法
+"tests/*" = ["B011"]
+# alembic/env.py 需要在 sys.path 修改之后才 import
+"alembic/env.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+# 第三方库没有类型存根是常态，不因此报错
+ignore_missing_imports = true
+# 未标注类型的函数体不检查（代码库里还有一批老函数），但带注解的必须自洽
+check_untyped_defs = false
+warn_redundant_casts = true
+warn_unused_ignores = false
+no_implicit_optional = true
+exclude = ["alembic/"]
+
+# 第三方库：没有类型信息
+[[tool.mypy.overrides]]
+module = [
+    "langgraph.*",
+    "langchain_core.*",
+    "langchain_text_splitters.*",
+    "pgvector.*",
+    "jose.*",
+    "passlib.*",
+    "dateutil.*",
+    "pypdf2.*",
+    "docx.*",
+    "markdown.*",
+]
+ignore_missing_imports = true
+
+# ── 历史类型噪音：按模块冻结（2026-11-09 基线 45 条 → 白名单 6 个模块）──
+# 这些模块的问题都来自框架/三方库的类型定义与运行时行为不一致，不是业务 bug：
+#   app.agent.graph      LangGraph 的 State 是 dict，与 TypedDict 声明天然不匹配
+#   app.core.deps        FastAPI 的 yield 依赖是 async generator，返回类型标注特殊
+#   app.database.session 同上
+#   app.core.logging     logging.LogRecord 是动态属性，加 request_id 属于正常扩展
+#   app.rag.text_splitter  pgvector/langchain 导入降级分支无法被静态推断
+#   app.rag.embeddings   与 pgvector 的 Vector 类型互操作
+#   app.repositories.base 泛型 T 的 id 属性（BaseRepository 的约定）
+[[tool.mypy.overrides]]
+module = [
+    "app.agent.graph",
+    "app.core.deps",
+    "app.database.session",
+    "app.core.logging",
+    "app.rag.text_splitter",
+    "app.rag.embeddings",
+    "app.repositories.base",
+]
+ignore_errors = true

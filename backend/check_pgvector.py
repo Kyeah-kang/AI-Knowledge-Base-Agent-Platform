@@ -1,8 +1,9 @@
 """检查 pgvector 扩展是否安装在 PostgreSQL 中"""
 import asyncio
-import asyncpg
-import sys
 import os
+import sys
+
+import asyncpg
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "app"))
 

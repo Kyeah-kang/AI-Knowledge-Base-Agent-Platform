@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+logs/
+uploads/
+.env
+.env.local
+*.log
+.pytest_b1.txt
+.idea/
+.g.txt
+test_phase*.py
+tests/
+data/

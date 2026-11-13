@@ -11,9 +11,9 @@ Repository 模式的作用：
 这段代码相当于数据库万能工具类，让所有表都能直接用增删改查，不用重复写代码
 """
 
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.base import MySQLBase

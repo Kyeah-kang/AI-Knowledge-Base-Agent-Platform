@@ -29,7 +29,11 @@ def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
 
 
 # 普通用户接口（需登录）
-@router.get("/me", response_model=Response[UserResponse])
+@router.get(
+    "/me",
+    summary="获取当前用户",
+    response_model=Response[UserResponse],
+)
 async def get_my_profile(
     current_user: User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
@@ -39,7 +43,11 @@ async def get_my_profile(
     return Response(data=result)
 
 
-@router.put("/me", response_model=Response[UserResponse])
+@router.put(
+    "/me",
+    summary="修改个人资料",
+    response_model=Response[UserResponse],
+)
 async def update_my_profile(
     request: UpdateUserRequest,
     current_user: User = Depends(get_current_user),
@@ -51,7 +59,11 @@ async def update_my_profile(
 
 
 # 管理员接口
-@router.get("", response_model=Response[PaginationResponse[UserResponse]])
+@router.get(
+    "",
+    summary="知识库列表",
+    response_model=Response[PaginationResponse[UserResponse]],
+)
 async def list_users(
     page: int = 1,
     page_size: int = 20,
@@ -67,7 +79,11 @@ async def list_users(
     )
 
 
-@router.put("/{user_id}/status", response_model=Response[UserResponse])
+@router.put(
+    "/{user_id}/status",
+    summary="启用/禁用用户（管理员）",
+    response_model=Response[UserResponse],
+)
 async def toggle_user_status(
     user_id: int,
     admin: User = Depends(get_current_admin),

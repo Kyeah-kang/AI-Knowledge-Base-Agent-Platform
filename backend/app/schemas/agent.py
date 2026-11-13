@@ -60,6 +60,10 @@ class AgentChatRequest(BaseModel):
     knowledge_base_ids: list[int] | None = Field(
         None, description="知识库 ID 列表（可选，用于 RAG 检索）"
     )
+    # P2-4：按请求指定模型（不在允许列表内会退回默认并记指标）
+    model_name: str | None = Field(
+        None, max_length=50, description="本轮使用的模型（可选，需在允许列表内）"
+    )
 
 
 class AgentChatResponse(BaseModel):

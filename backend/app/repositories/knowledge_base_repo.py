@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.knowledge_base import KnowledgeBase
 from app.repositories.base import BaseRepository
 
+
 # 专门操作知识库表的工具类
 class KnowledgeBaseRepository(BaseRepository[KnowledgeBase]):
     """知识库 Repository"""
@@ -17,6 +18,13 @@ class KnowledgeBaseRepository(BaseRepository[KnowledgeBase]):
     def __init__(self, db: AsyncSession):
         # 调用父类 BaseRepository 的初始化方法，并把 db 和 KnowledgeBase 传给父类
         super().__init__(db, KnowledgeBase)
+
+    async def count_by_owner(self, owner_id: int) -> int:
+        """某个用户拥有的知识库数量（Dashboard 真实统计用，P2-9）"""
+        result = await self.db.execute(
+            select(func.count(self.model.id)).where(self.model.owner_id == owner_id)
+        )
+        return result.scalar_one()
 
     # 根据用户 ID 查询这个用户拥有的知识库，并支持分页
     async def get_by_owner_id(

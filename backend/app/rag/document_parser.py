@@ -9,7 +9,8 @@
 
 用法：
     parser = DocumentParser()
-    text = await parser.parse(file_path, file_type)  # "pdf" / "docx" / "md" / "txt"
+    # 同步方法：阻塞 IO 必须放到线程里跑，别在事件循环里直接调用
+    text = await asyncio.to_thread(parser.parse, file_path, "pdf")
 
 每个解析方法都返回提取后的纯文本字符串。
 如果解析失败，抛出 AppException(400)，由全局异常处理器统一处理。
@@ -39,9 +40,13 @@ class DocumentParser:
             "html": self._parse_text,    # HTML 也当作纯文本（简单处理）
         }
 
-    async def parse(self, file_path: str, file_type: str) -> str:
+    def parse(self, file_path: str, file_type: str) -> str:
         """
         解析文档，返回纯文本内容。
+
+        注意：这是**同步**方法。PyPDF2 / python-docx 都是阻塞 IO，
+        在 async 函数里直接调用会卡住整个事件循环（P0-8），
+        因此调用方必须用 `asyncio.to_thread(...)` 包一层。
 
         参数：
             file_path: 文件在磁盘上的完整路径
@@ -126,7 +131,7 @@ class DocumentParser:
 
     def _parse_text(self, file_path: str) -> str:
         """读取纯文本文件内容"""
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             text = f.read()
 
         if not text.strip():

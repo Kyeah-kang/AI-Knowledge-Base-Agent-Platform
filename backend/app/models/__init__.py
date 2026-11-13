@@ -7,11 +7,11 @@ ORM 模型包
     from app.models.user import User
     from app.models.document import Document, DocumentChunk
 """
-from app.models.user import User
-from app.models.knowledge_base import KnowledgeBase
-from app.models.document import Document, DocumentChunk
-from app.models.chat import ChatSession, ChatMessage
 from app.models.agent import AgentTool
+from app.models.chat import ChatMessage, ChatSession
+from app.models.document import Document, DocumentChunk
+from app.models.knowledge_base import KnowledgeBase
+from app.models.user import User
 
 __all__ = [
     "User",

@@ -37,6 +37,11 @@ class SendMessageRequest(BaseModel):
     knowledge_base_ids: Optional[list[int]] = Field(
         None, description="知识库 ID 列表（可选），指定后 RAG 会从这些知识库中检索相关内容注入上下文"
     )
+    # P2-4：按请求指定模型（优先级：请求 > 会话 > 配置默认）
+    # 不在允许列表里会被解析器退回默认模型并记指标，不会 400
+    model_name: Optional[str] = Field(
+        None, max_length=50, description="本轮使用的模型（可选，需在允许列表内）"
+    )
 
 
 # 响应 Schema（后端→前端：规范返回数据格式）
@@ -78,6 +83,9 @@ class ChatSessionDetailResponse(BaseModel):
     updated_at: datetime
     # 核心：嵌套模型，返回该会话下的所有消息列表，每条消息符合 ChatMessageResponse 格式
     messages: list[ChatMessageResponse] = []
+    # 该会话**真实**的消息总数。messages 可能因上限被截断（P1-4），
+    # 前端可以用它判断"是不是还没加载完"
+    message_total: int = 0
 
     class Config:
         from_attributes = True

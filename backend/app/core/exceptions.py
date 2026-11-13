@@ -3,33 +3,77 @@
 """
 
 import logging
+from typing import Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi import Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
+
+# 业务码落在这些值里时，它与 HTTP 状态码是同义的（401/403/404/429/502/503 ...）
+_HTTP_STATUS_LIKE = range(400, 600)
 
 
 # 自定义业务异常
 # AppException 把"HTTP 状态码"和"业务错误码"解耦
 class AppException(Exception):
-    """业务异常 — 主动抛出的可预知错误"""
+    """
+    业务异常 — 主动抛出的可预知错误。
+
+    状态码约定（P0-6）：
+      - 传了 `http_status_code` → 用它
+      - 没传 → 用 `code` 本身（当 code 是合法 HTTP 状态码时），否则退回 400
+
+    历史上这里把 `http_status_code` 写死成 400，
+    于是 `AppException(code=401)` 会以 **HTTP 400** 返回（body 里才是 401），
+    前端拦截器、网关、监控按状态码统计全部失真。
+    """
 
     def __init__(
         self,
         code: int = 400,
         message: str = "请求失败",
-        data: any = None,
-        detail: any = None,
-        http_status_code: int = 400,
+        data: Any = None,
+        detail: Any = None,
+        http_status_code: int | None = None,
     ):
         self.code = code
         self.message = message
         self.data = data
         self.detail = detail
-        self.http_status_code = http_status_code
+        self.http_status_code = (
+            http_status_code
+            if http_status_code is not None
+            else (code if code in _HTTP_STATUS_LIKE else 400)
+        )
+        # 必须调用父类构造：否则 str(exc) 是空字符串，
+        # 日志里只剩 "app.core.exceptions.AppException" 一个类名（排查时完全看不出原因），
+        # 拼进用户可见文案时也会变成 "Agent 执行出错：" 这种没有信息量的句子。
+        super().__init__(message)
+
+
+class RetrievalError(AppException):
+    """
+    知识库检索失败 — 明确区分「没有相关内容」和「检索坏了」。
+
+    约定：
+      - 搜索成功但没有命中 → 不是异常，返回空结果（由调用方决定话术）
+      - 检索链路本身不可用或报错 → 抛本异常（HTTP 503）
+
+    为什么继承 AppException：
+      这样路由（JSON 响应）、SSE 生成器、Agent 工具三处都能用同一套
+      `except AppException` 处理，不需要为检索单独写分支。
+    """
+
+    def __init__(self, message: str, detail: str | None = None):
+        super().__init__(
+            code=503,
+            message=message,
+            detail=detail,
+            http_status_code=503,
+        )
 
 
 # 全局异常处理器（注册函数）
@@ -84,8 +128,12 @@ def register_exception_handlers(app):
             },
         )
 
-    # FastAPI HTTPException
-    @app.exception_handler(HTTPException)
+    # HTTPException —— 同时覆盖 **Starlette** 的那一支。
+    # 原因：路由不存在（/api/v1/xxx 打错）时 Starlette 抛的是自己的 HTTPException，
+    # 而 @app.exception_handler(HTTPException) 只注册了 fastapi 那个子类，
+    # 于是 404 会漏出默认的 {"detail": "Not Found"}，前端得多写一种解析分支。
+    # StarletteHTTPException 是父类，注册它即可同时覆盖两者。
+    @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         return JSONResponse(
             status_code=exc.status_code,

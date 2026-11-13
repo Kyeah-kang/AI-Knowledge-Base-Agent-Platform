@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+
 # 校验前端传来的创建数据库数据
 class CreateKnowledgeBaseRequest(BaseModel):
     """创建知识库请求"""

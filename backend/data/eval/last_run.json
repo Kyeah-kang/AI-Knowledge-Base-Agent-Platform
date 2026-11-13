@@ -1,0 +1,1609 @@
+{
+  "generated_at": "2026-11-02T13:40:24",
+  "threshold": 0.55,
+  "hnsw_ef_search": 40,
+  "embedding_model": "BAAI/bge-m3",
+  "reports": [
+    {
+      "mode": "retrieve",
+      "top_k": 5,
+      "chunk_size": 500,
+      "overlap": 50,
+      "total_questions": 36,
+      "answerable": 34,
+      "no_answer": 2,
+      "recall": {
+        "recall@1": 0.9412,
+        "recall@3": 1.0,
+        "recall@5": 1.0
+      },
+      "mrr": 0.9706,
+      "no_answer_false_positive_rate": 1.0,
+      "latency_p50_ms": 30.1,
+      "latency_p95_ms": 50.4,
+      "misses": [],
+      "per_question": [
+        {
+          "id": "q01",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.771
+            ],
+            [
+              "05-loan-approval.md",
+              0.5435
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5148
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4976
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4519
+            ]
+          ]
+        },
+        {
+          "id": "q02",
+          "type": "paraphrase",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.736
+            ],
+            [
+              "05-loan-approval.md",
+              0.5292
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5138
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4851
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4289
+            ]
+          ]
+        },
+        {
+          "id": "q03",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.7288
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5646
+            ],
+            [
+              "05-loan-approval.md",
+              0.5517
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5465
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4965
+            ]
+          ]
+        },
+        {
+          "id": "q04",
+          "type": "reasoning",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.6909
+            ],
+            [
+              "02-attendance-leave.md",
+              0.6052
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5982
+            ],
+            [
+              "05-loan-approval.md",
+              0.5869
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5524
+            ]
+          ]
+        },
+        {
+          "id": "q05",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.5181
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4729
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4347
+            ],
+            [
+              "03-it-device-access.md",
+              0.4034
+            ],
+            [
+              "03-it-device-access.md",
+              0.3984
+            ]
+          ]
+        },
+        {
+          "id": "q06",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.5324
+            ],
+            [
+              "05-loan-approval.md",
+              0.5161
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4922
+            ],
+            [
+              "03-it-device-access.md",
+              0.4651
+            ],
+            [
+              "04-onboarding-training.md",
+              0.431
+            ]
+          ]
+        },
+        {
+          "id": "q07",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.7043
+            ],
+            [
+              "07-remote-workplace.md",
+              0.6031
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5712
+            ],
+            [
+              "01-travel-expense.md",
+              0.5563
+            ],
+            [
+              "03-it-device-access.md",
+              0.5249
+            ]
+          ]
+        },
+        {
+          "id": "q08",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6697
+            ],
+            [
+              "04-onboarding-training.md",
+              0.6111
+            ],
+            [
+              "07-remote-workplace.md",
+              0.547
+            ],
+            [
+              "03-it-device-access.md",
+              0.5298
+            ],
+            [
+              "01-travel-expense.md",
+              0.5275
+            ]
+          ]
+        },
+        {
+          "id": "q09",
+          "type": "reasoning",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6414
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5314
+            ],
+            [
+              "01-travel-expense.md",
+              0.5263
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4884
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4724
+            ]
+          ]
+        },
+        {
+          "id": "q10",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.5557
+            ],
+            [
+              "01-travel-expense.md",
+              0.5213
+            ],
+            [
+              "05-loan-approval.md",
+              0.5092
+            ],
+            [
+              "08-performance-promotion.md",
+              0.5092
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5055
+            ]
+          ]
+        },
+        {
+          "id": "q11",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.5567
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5411
+            ],
+            [
+              "01-travel-expense.md",
+              0.5254
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5049
+            ],
+            [
+              "05-loan-approval.md",
+              0.4818
+            ]
+          ]
+        },
+        {
+          "id": "q12",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6556
+            ],
+            [
+              "01-travel-expense.md",
+              0.5551
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4969
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4944
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4858
+            ]
+          ]
+        },
+        {
+          "id": "q13",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6417
+            ],
+            [
+              "03-it-device-access.md",
+              0.5401
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5082
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4892
+            ],
+            [
+              "06-info-security.md",
+              0.4478
+            ]
+          ]
+        },
+        {
+          "id": "q14",
+          "type": "paraphrase",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6546
+            ],
+            [
+              "07-remote-workplace.md",
+              0.602
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5966
+            ],
+            [
+              "03-it-device-access.md",
+              0.5686
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5438
+            ]
+          ]
+        },
+        {
+          "id": "q15",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "07-remote-workplace.md",
+              0.6003
+            ],
+            [
+              "03-it-device-access.md",
+              0.5772
+            ],
+            [
+              "06-info-security.md",
+              0.5093
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4963
+            ],
+            [
+              "03-it-device-access.md",
+              0.4881
+            ]
+          ]
+        },
+        {
+          "id": "q16",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6109
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5146
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4964
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4563
+            ],
+            [
+              "06-info-security.md",
+              0.4294
+            ]
+          ]
+        },
+        {
+          "id": "q17",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "06-info-security.md",
+              0.5185
+            ],
+            [
+              "03-it-device-access.md",
+              0.4912
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4559
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4407
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4384
+            ]
+          ]
+        },
+        {
+          "id": "q18",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6804
+            ],
+            [
+              "05-loan-approval.md",
+              0.6507
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5162
+            ],
+            [
+              "03-it-device-access.md",
+              0.5056
+            ],
+            [
+              "01-travel-expense.md",
+              0.4972
+            ]
+          ]
+        },
+        {
+          "id": "q19",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6767
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5623
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5523
+            ],
+            [
+              "03-it-device-access.md",
+              0.5293
+            ],
+            [
+              "03-it-device-access.md",
+              0.5001
+            ]
+          ]
+        },
+        {
+          "id": "q20",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.7196
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5806
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5712
+            ],
+            [
+              "03-it-device-access.md",
+              0.5647
+            ],
+            [
+              "08-performance-promotion.md",
+              0.5154
+            ]
+          ]
+        },
+        {
+          "id": "q21",
+          "type": "reasoning",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6298
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5722
+            ],
+            [
+              "01-travel-expense.md",
+              0.5554
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5392
+            ],
+            [
+              "08-performance-promotion.md",
+              0.5021
+            ]
+          ]
+        },
+        {
+          "id": "q22",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6264
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5124
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4978
+            ],
+            [
+              "05-loan-approval.md",
+              0.4623
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4574
+            ]
+          ]
+        },
+        {
+          "id": "q23",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6022
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4714
+            ],
+            [
+              "03-it-device-access.md",
+              0.4469
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4444
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4387
+            ]
+          ]
+        },
+        {
+          "id": "q24",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6273
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5707
+            ],
+            [
+              "03-it-device-access.md",
+              0.5348
+            ],
+            [
+              "08-performance-promotion.md",
+              0.5212
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5093
+            ]
+          ]
+        },
+        {
+          "id": "q25",
+          "type": "cross_doc",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.6799
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4811
+            ],
+            [
+              "05-loan-approval.md",
+              0.4727
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4641
+            ],
+            [
+              "06-info-security.md",
+              0.4009
+            ]
+          ]
+        },
+        {
+          "id": "q26",
+          "type": "cross_doc",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.5685
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4815
+            ],
+            [
+              "06-info-security.md",
+              0.4772
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4559
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4355
+            ]
+          ]
+        },
+        {
+          "id": "q27",
+          "type": "lookup",
+          "expected": "05-loan-approval.md",
+          "ranked": [
+            [
+              "05-loan-approval.md",
+              0.7136
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5326
+            ],
+            [
+              "01-travel-expense.md",
+              0.5233
+            ],
+            [
+              "03-it-device-access.md",
+              0.48
+            ],
+            [
+              "03-it-device-access.md",
+              0.477
+            ]
+          ]
+        },
+        {
+          "id": "q28",
+          "type": "lookup",
+          "expected": "05-loan-approval.md",
+          "ranked": [
+            [
+              "05-loan-approval.md",
+              0.553
+            ],
+            [
+              "01-travel-expense.md",
+              0.5341
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4801
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4612
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4576
+            ]
+          ]
+        },
+        {
+          "id": "q29",
+          "type": "lookup",
+          "expected": "06-info-security.md",
+          "ranked": [
+            [
+              "06-info-security.md",
+              0.6767
+            ],
+            [
+              "03-it-device-access.md",
+              0.4921
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4836
+            ],
+            [
+              "05-loan-approval.md",
+              0.4356
+            ],
+            [
+              "03-it-device-access.md",
+              0.4214
+            ]
+          ]
+        },
+        {
+          "id": "q30",
+          "type": "lookup",
+          "expected": "06-info-security.md",
+          "ranked": [
+            [
+              "06-info-security.md",
+              0.6602
+            ],
+            [
+              "04-onboarding-training.md",
+              0.554
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5376
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5329
+            ],
+            [
+              "03-it-device-access.md",
+              0.5325
+            ]
+          ]
+        },
+        {
+          "id": "q31",
+          "type": "lookup",
+          "expected": "07-remote-workplace.md",
+          "ranked": [
+            [
+              "07-remote-workplace.md",
+              0.7543
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5847
+            ],
+            [
+              "03-it-device-access.md",
+              0.5802
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5676
+            ],
+            [
+              "01-travel-expense.md",
+              0.5394
+            ]
+          ]
+        },
+        {
+          "id": "q32",
+          "type": "lookup",
+          "expected": "07-remote-workplace.md",
+          "ranked": [
+            [
+              "07-remote-workplace.md",
+              0.5116
+            ],
+            [
+              "03-it-device-access.md",
+              0.5044
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4925
+            ],
+            [
+              "04-onboarding-training.md",
+              0.491
+            ],
+            [
+              "01-travel-expense.md",
+              0.4887
+            ]
+          ]
+        },
+        {
+          "id": "q33",
+          "type": "lookup",
+          "expected": "08-performance-promotion.md",
+          "ranked": [
+            [
+              "08-performance-promotion.md",
+              0.7038
+            ],
+            [
+              "06-info-security.md",
+              0.5184
+            ],
+            [
+              "02-attendance-leave.md",
+              0.4951
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4836
+            ],
+            [
+              "07-remote-workplace.md",
+              0.4515
+            ]
+          ]
+        },
+        {
+          "id": "q34",
+          "type": "reasoning",
+          "expected": "08-performance-promotion.md",
+          "ranked": [
+            [
+              "08-performance-promotion.md",
+              0.6256
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5774
+            ],
+            [
+              "03-it-device-access.md",
+              0.5258
+            ],
+            [
+              "02-attendance-leave.md",
+              0.524
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5016
+            ]
+          ]
+        },
+        {
+          "id": "q35",
+          "type": "no_answer",
+          "expected": null,
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.5131
+            ],
+            [
+              "07-remote-workplace.md",
+              0.489
+            ],
+            [
+              "04-onboarding-training.md",
+              0.4601
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4504
+            ],
+            [
+              "03-it-device-access.md",
+              0.4475
+            ]
+          ]
+        },
+        {
+          "id": "q36",
+          "type": "no_answer",
+          "expected": null,
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.4189
+            ],
+            [
+              "08-performance-promotion.md",
+              0.4149
+            ],
+            [
+              "03-it-device-access.md",
+              0.4111
+            ],
+            [
+              "06-info-security.md",
+              0.3873
+            ],
+            [
+              "05-loan-approval.md",
+              0.3837
+            ]
+          ]
+        }
+      ],
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "recall@1": 0.9412,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "mrr": 0.9706,
+          "no_answer_fp_rate": 1.0
+        },
+        {
+          "threshold": 0.35,
+          "recall@1": 0.9412,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "mrr": 0.9706,
+          "no_answer_fp_rate": 1.0
+        },
+        {
+          "threshold": 0.4,
+          "recall@1": 0.9412,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "mrr": 0.9706,
+          "no_answer_fp_rate": 1.0
+        },
+        {
+          "threshold": 0.45,
+          "recall@1": 0.9412,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "mrr": 0.9706,
+          "no_answer_fp_rate": 0.5
+        },
+        {
+          "threshold": 0.5,
+          "recall@1": 0.9412,
+          "recall@3": 0.9706,
+          "recall@5": 0.9706,
+          "mrr": 0.9559,
+          "no_answer_fp_rate": 0.5
+        },
+        {
+          "threshold": 0.55,
+          "recall@1": 0.8529,
+          "recall@3": 0.8824,
+          "recall@5": 0.8824,
+          "mrr": 0.8676,
+          "no_answer_fp_rate": 0.0
+        },
+        {
+          "threshold": 0.6,
+          "recall@1": 0.7353,
+          "recall@3": 0.7353,
+          "recall@5": 0.7353,
+          "mrr": 0.7353,
+          "no_answer_fp_rate": 0.0
+        },
+        {
+          "threshold": 0.65,
+          "recall@1": 0.5,
+          "recall@3": 0.5,
+          "recall@5": 0.5,
+          "mrr": 0.5,
+          "no_answer_fp_rate": 0.0
+        },
+        {
+          "threshold": 0.7,
+          "recall@1": 0.2353,
+          "recall@3": 0.2353,
+          "recall@5": 0.2353,
+          "mrr": 0.2353,
+          "no_answer_fp_rate": 0.0
+        }
+      ]
+    },
+    {
+      "mode": "pipeline",
+      "top_k": 5,
+      "chunk_size": 500,
+      "overlap": 50,
+      "total_questions": 36,
+      "answerable": 34,
+      "no_answer": 2,
+      "recall": {
+        "recall@1": 0.8529,
+        "recall@3": 0.8824,
+        "recall@5": 0.8824
+      },
+      "mrr": 0.8676,
+      "no_answer_false_positive_rate": 0.0,
+      "latency_p50_ms": 55.3,
+      "latency_p95_ms": 129.5,
+      "misses": [
+        {
+          "id": "q05",
+          "question": "坐高铁可以报二等座吗？",
+          "expected": "01-travel-expense.md",
+          "got": []
+        },
+        {
+          "id": "q06",
+          "question": "报销发票抬头有什么要求？",
+          "expected": "01-travel-expense.md",
+          "got": []
+        },
+        {
+          "id": "q17",
+          "question": "密码输错几次会被锁？",
+          "expected": "03-it-device-access.md",
+          "got": []
+        },
+        {
+          "id": "q32",
+          "question": "工牌丢了要花多少钱补办？",
+          "expected": "07-remote-workplace.md",
+          "got": []
+        }
+      ],
+      "per_question": [
+        {
+          "id": "q01",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.771
+            ]
+          ]
+        },
+        {
+          "id": "q02",
+          "type": "paraphrase",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.7361
+            ]
+          ]
+        },
+        {
+          "id": "q03",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.7288
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5647
+            ],
+            [
+              "05-loan-approval.md",
+              0.5507
+            ]
+          ]
+        },
+        {
+          "id": "q04",
+          "type": "reasoning",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.6894
+            ],
+            [
+              "02-attendance-leave.md",
+              0.604
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5972
+            ],
+            [
+              "05-loan-approval.md",
+              0.5857
+            ],
+            [
+              "04-onboarding-training.md",
+              0.552
+            ]
+          ]
+        },
+        {
+          "id": "q05",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": []
+        },
+        {
+          "id": "q06",
+          "type": "lookup",
+          "expected": "01-travel-expense.md",
+          "ranked": []
+        },
+        {
+          "id": "q07",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.7045
+            ],
+            [
+              "07-remote-workplace.md",
+              0.6028
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5715
+            ],
+            [
+              "01-travel-expense.md",
+              0.5564
+            ]
+          ]
+        },
+        {
+          "id": "q08",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6699
+            ],
+            [
+              "04-onboarding-training.md",
+              0.6111
+            ]
+          ]
+        },
+        {
+          "id": "q09",
+          "type": "reasoning",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6411
+            ]
+          ]
+        },
+        {
+          "id": "q10",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.5554
+            ]
+          ]
+        },
+        {
+          "id": "q11",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.5569
+            ]
+          ]
+        },
+        {
+          "id": "q12",
+          "type": "lookup",
+          "expected": "02-attendance-leave.md",
+          "ranked": [
+            [
+              "02-attendance-leave.md",
+              0.6555
+            ],
+            [
+              "01-travel-expense.md",
+              0.5555
+            ]
+          ]
+        },
+        {
+          "id": "q13",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6423
+            ]
+          ]
+        },
+        {
+          "id": "q14",
+          "type": "paraphrase",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6543
+            ],
+            [
+              "07-remote-workplace.md",
+              0.6019
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5964
+            ],
+            [
+              "03-it-device-access.md",
+              0.569
+            ]
+          ]
+        },
+        {
+          "id": "q15",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "07-remote-workplace.md",
+              0.5993
+            ],
+            [
+              "03-it-device-access.md",
+              0.5766
+            ]
+          ]
+        },
+        {
+          "id": "q16",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.612
+            ]
+          ]
+        },
+        {
+          "id": "q17",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": []
+        },
+        {
+          "id": "q18",
+          "type": "lookup",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.6804
+            ],
+            [
+              "05-loan-approval.md",
+              0.6501
+            ]
+          ]
+        },
+        {
+          "id": "q19",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.676
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5617
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5517
+            ]
+          ]
+        },
+        {
+          "id": "q20",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.7194
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5807
+            ],
+            [
+              "07-remote-workplace.md",
+              0.5711
+            ],
+            [
+              "03-it-device-access.md",
+              0.5644
+            ]
+          ]
+        },
+        {
+          "id": "q21",
+          "type": "reasoning",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6299
+            ],
+            [
+              "02-attendance-leave.md",
+              0.572
+            ],
+            [
+              "01-travel-expense.md",
+              0.5551
+            ]
+          ]
+        },
+        {
+          "id": "q22",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6263
+            ]
+          ]
+        },
+        {
+          "id": "q23",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6026
+            ]
+          ]
+        },
+        {
+          "id": "q24",
+          "type": "lookup",
+          "expected": "04-onboarding-training.md",
+          "ranked": [
+            [
+              "04-onboarding-training.md",
+              0.6265
+            ],
+            [
+              "02-attendance-leave.md",
+              0.57
+            ]
+          ]
+        },
+        {
+          "id": "q25",
+          "type": "cross_doc",
+          "expected": "01-travel-expense.md",
+          "ranked": [
+            [
+              "01-travel-expense.md",
+              0.6798
+            ]
+          ]
+        },
+        {
+          "id": "q26",
+          "type": "cross_doc",
+          "expected": "03-it-device-access.md",
+          "ranked": [
+            [
+              "03-it-device-access.md",
+              0.5691
+            ]
+          ]
+        },
+        {
+          "id": "q27",
+          "type": "lookup",
+          "expected": "05-loan-approval.md",
+          "ranked": [
+            [
+              "05-loan-approval.md",
+              0.7135
+            ]
+          ]
+        },
+        {
+          "id": "q28",
+          "type": "lookup",
+          "expected": "05-loan-approval.md",
+          "ranked": [
+            [
+              "05-loan-approval.md",
+              0.5535
+            ]
+          ]
+        },
+        {
+          "id": "q29",
+          "type": "lookup",
+          "expected": "06-info-security.md",
+          "ranked": [
+            [
+              "06-info-security.md",
+              0.6768
+            ]
+          ]
+        },
+        {
+          "id": "q30",
+          "type": "lookup",
+          "expected": "06-info-security.md",
+          "ranked": [
+            [
+              "06-info-security.md",
+              0.6606
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5544
+            ]
+          ]
+        },
+        {
+          "id": "q31",
+          "type": "lookup",
+          "expected": "07-remote-workplace.md",
+          "ranked": [
+            [
+              "07-remote-workplace.md",
+              0.754
+            ],
+            [
+              "02-attendance-leave.md",
+              0.5841
+            ],
+            [
+              "03-it-device-access.md",
+              0.58
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5673
+            ]
+          ]
+        },
+        {
+          "id": "q32",
+          "type": "lookup",
+          "expected": "07-remote-workplace.md",
+          "ranked": []
+        },
+        {
+          "id": "q33",
+          "type": "lookup",
+          "expected": "08-performance-promotion.md",
+          "ranked": [
+            [
+              "08-performance-promotion.md",
+              0.7038
+            ]
+          ]
+        },
+        {
+          "id": "q34",
+          "type": "reasoning",
+          "expected": "08-performance-promotion.md",
+          "ranked": [
+            [
+              "08-performance-promotion.md",
+              0.6256
+            ],
+            [
+              "04-onboarding-training.md",
+              0.5774
+            ]
+          ]
+        },
+        {
+          "id": "q35",
+          "type": "no_answer",
+          "expected": null,
+          "ranked": []
+        },
+        {
+          "id": "q36",
+          "type": "no_answer",
+          "expected": null,
+          "ranked": []
+        }
+      ],
+      "sweep": []
+    }
+  ],
+  "metrics": {
+    "embedding_total{status=ok}": 3,
+    "embedding_batches_total": 5,
+    "vector_search_total{status=ok}": 72
+  }
+}

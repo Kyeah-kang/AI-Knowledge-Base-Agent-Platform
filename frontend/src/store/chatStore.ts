@@ -15,6 +15,10 @@ interface ChatState {
   addMessage: (message: ChatMessage) => void;
   setIsStreaming: (v: boolean) => void;
   appendToLastMessage: (token: string) => void;
+  /** 给最后一条消息补字段（例如把引用挂到回答上） */
+  patchLastMessage: (patch: Partial<ChatMessage>) => void;
+  /** 移除最后一条消息（重试时先把失败的回答去掉） */
+  removeLastMessage: () => void;
   reset: () => void;
 }
 
@@ -41,6 +45,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const last = messages[messages.length - 1];
     last.content += token;
     set({ messages: [...messages] });
+  },
+
+  patchLastMessage: (patch) => {
+    const messages = get().messages;
+    if (messages.length === 0) return;
+    const last = { ...messages[messages.length - 1], ...patch };
+    set({ messages: [...messages.slice(0, -1), last] });
+  },
+
+  removeLastMessage: () => {
+    const messages = get().messages;
+    if (messages.length === 0) return;
+    set({ messages: messages.slice(0, -1) });
   },
 
   reset: () => set({ messages: [], currentSessionId: null }),

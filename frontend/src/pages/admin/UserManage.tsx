@@ -36,7 +36,6 @@ export default function UserManage() {
   const columns = [
     { title: "ID", dataIndex: "id", key: "id", width: 70 },
     { title: "用户名", dataIndex: "username", key: "username" },
-    { title: "邮箱", dataIndex: "email", key: "email", ellipsis: true },
     { title: "角色", dataIndex: "is_admin", key: "is_admin", width: 80, render: (v: boolean) => v ? <Tag color="red">管理员</Tag> : <Tag>用户</Tag> },
     { title: "状态", dataIndex: "is_active", key: "is_active", width: 100, render: (v: boolean) => <Tag color={v ? "green" : "default"}>{v ? "已激活" : "已禁用"}</Tag> },
     { title: "注册时间", dataIndex: "created_at", key: "created_at", width: 170, render: (t: string) => new Date(t).toLocaleString("zh-CN") },

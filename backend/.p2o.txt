@@ -1,0 +1,22 @@
+﻿user=p2smoke41831
+
+[P2-4] GET /chat/models
+  models: ['deepseek-chat', 'deepseek-reasoner']
+  default: deepseek-chat
+  fallbacks: ['deepseek-chat']
+
+[P2-4] 指定合法模型 → done 事件回传实际模型
+  回答: 收到
+  done 里的 model: deepseek-chat
+
+[P2-4] 指定不存在的模型 → 退回默认（不 500、不 400）
+  HTTP/回答: 200 / 收到
+  done 里的 model: deepseek-chat
+  llm_model_fallback_total{not_allowed}: 1
+
+[P2-9] GET /stats/overview
+  stats: {'kb_count': 1, 'doc_count': 0, 'failed_doc_count': 0, 'session_count': 1, 'message_count': 4}
+  上传后 doc_count / failed: 1 / 0
+  失败上传后 doc_count / failed: 2 / 1
+
+ALL ASSERTIONS PASSED

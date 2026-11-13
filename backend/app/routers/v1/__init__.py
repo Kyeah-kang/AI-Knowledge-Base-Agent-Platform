@@ -40,7 +40,12 @@ async def get_current_user(
             detail="无效的访问令牌",
         )
 
-    user_id = int(payload.get("sub"))
+    subject = payload.get("sub")
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="令牌缺少用户标识"
+        )
+    user_id = int(subject)
     repo = UserRepository(db)
     user = await repo.get(user_id)
 

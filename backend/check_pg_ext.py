@@ -1,7 +1,9 @@
 """检查 pgvector 扩展"""
 import asyncio
-import asyncpg
 import os
+
+import asyncpg
+
 
 async def check():
     conn = await asyncpg.connect(

@@ -2,7 +2,7 @@
 UTC 时间处理
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
 
@@ -19,7 +19,7 @@ def utc_now() -> datetime:
         得到 naive datetime            → 我们认为它是 UTC
         to_timezone(dt, "Asia/Shanghai") → 转成上海时间展示
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def to_timezone(dt: datetime, tz: Optional[str] = "Asia/Shanghai") -> datetime:

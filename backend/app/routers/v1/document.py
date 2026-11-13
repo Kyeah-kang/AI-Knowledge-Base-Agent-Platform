@@ -33,6 +33,7 @@ def get_service(
 
 @router.post(
     "/knowledge-bases/{kb_id}/documents",
+    summary="上传文档（流式落盘 + 内容去重）",
     response_model=Response[DocumentUploadResponse],
 )
 async def upload_document(
@@ -58,6 +59,7 @@ async def upload_document(
 
 @router.get(
     "/knowledge-bases/{kb_id}/documents",
+    summary="文档列表",
     response_model=Response[PaginationResponse[DocumentResponse]],
 )
 async def list_documents(
@@ -82,6 +84,7 @@ async def list_documents(
 
 @router.get(
     "/documents/{doc_id}",
+    summary="文档详情",
     response_model=Response[DocumentDetailResponse],
 )
 async def get_document(
@@ -96,6 +99,7 @@ async def get_document(
 
 @router.delete(
     "/documents/{doc_id}",
+    summary="删除文档",
     response_model=Response[None],
 )
 async def delete_document(
