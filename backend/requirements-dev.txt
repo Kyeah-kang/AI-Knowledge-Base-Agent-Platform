@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────
+# 开发/CI 依赖 —— 包含运行时依赖 + 测试 + 代码质量工具
+#
+#   本地开发：pip install -r requirements-dev.txt
+#   CI：       pip install -r requirements-dev.txt
+#   Docker：   pip install -r requirements.txt      ← 只装运行时，镜像更小
+#
+# 为什么拆两个文件（P2-8 的教训）：
+#   原来 ruff/mypy 忘了写进 requirements.txt，CI 装完依赖直接
+#   `ruff: command not found`，0 秒失败 —— 本地有、CI 没有，最难查的一类问题。
+#   现在"运行时"和"工具链"分开，CI 装 dev，镜像装 runtime，边界清楚。
+# ─────────────────────────────────────────────────────────────
+-r requirements.txt
+
+# ─── 测试 ───
+pytest==9.2.0
+pytest-asyncio==1.4.1
+pytest-cov==7.1.0
+coverage==7.17.0
+
+# ─── 代码质量门禁 ───
+ruff==0.17.4
+mypy==2.4.1

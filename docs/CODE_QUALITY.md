@@ -1,5 +1,21 @@
 # 代码质量门禁
 
+## 依赖拆成两个文件（P2-8 的教训）
+
+| 文件 | 装什么 | 谁用 |
+|---|---|---|
+| `requirements.txt` | **只装运行时**（fastapi / sqlalchemy / openai …） | Dockerfile、生产 |
+| `requirements-dev.txt` | `-r requirements.txt` + pytest + ruff + mypy | 本地开发、CI |
+
+**为什么改**：第一次 CI 就红了——`ruff` 忘了写进 `requirements.txt`，
+`pip install` 装完没有 ruff，`ruff check .` 直接 `command not found`，**0 秒失败**。
+本地有、CI 没有，是最难查的一类问题。现在：
+
+- CI 装 `requirements-dev.txt`
+- Docker 镜像只装 `requirements.txt`（镜像不被测试工具撑大）
+- CI 里多了一步「工具链自检」（`ruff --version` 等），工具缺失会**大声报错**
+
+
 三个命令构成后端的"提交前体检"，CI 里跑同一套（D-2）：
 
 ```powershell

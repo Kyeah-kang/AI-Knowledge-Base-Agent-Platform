@@ -605,6 +605,7 @@ start http://127.0.0.1:8000/docs
 
 ```powershell
 cd backend
+..\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # 含测试与 lint 工具
 ..\.venv\Scripts\python.exe -m ruff check .        # 静态检查：0 问题
 ..\.venv\Scripts\python.exe -m mypy app            # 类型检查：0 问题（71 文件）
 ..\.venv\Scripts\python.exe -m pytest --cov=app    # 测试 + 覆盖率门禁（65%）

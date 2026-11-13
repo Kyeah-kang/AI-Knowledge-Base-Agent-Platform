@@ -73,8 +73,17 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: 安装依赖
-        run: pip install -r requirements.txt
+      - name: 安装依赖（含测试与 lint 工具）
+        # 必须用 requirements-dev.txt：requirements.txt 只含运行时依赖
+        run: pip install -r requirements-dev.txt
+
+      - name: 工具链自检
+        # 显式确认工具真的装上了。第一次 CI 就是因为 ruff 没进依赖清单，
+        # 这里直接 `command not found`，0 秒失败却看不出原因。
+        run: |
+          ruff --version
+          mypy --version
+          pytest --version
 
       - name: 静态检查（ruff）
         run: ruff check .
