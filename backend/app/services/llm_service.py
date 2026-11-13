@@ -35,8 +35,17 @@ class LLMService:
         #   - timeout 必须有，否则上游卡住时请求会一直挂着
         #   - max_retries=0 是故意的：重试统一交给 app.core.retry，
         #     否则 SDK 自带重试会和自研重试相乘，一次故障被放大成 N×M 次调用
+        # 未配置 key 时也要能构造出来（CI/纯离线环境）：
+        # OpenAI SDK 不接受空 api_key，会直接抛 OpenAIError，
+        # 那会让"任何实例化 LLMService 的路径"（聊天、Agent、测试）全部崩掉，
+        # 而不是给出一个"调用时 401"的清晰错误。
+        self.is_available = bool(settings.LLM_API_KEY)
+        if not self.is_available:
+            logger.warning(
+                "LLM_API_KEY 未配置：服务仍可启动，但所有 LLM 调用都会失败（请检查环境变量）"
+            )
         self.client = AsyncOpenAI(
-            api_key=settings.LLM_API_KEY,
+            api_key=settings.LLM_API_KEY or "unset",
             base_url=settings.LLM_API_BASE,
             timeout=settings.LLM_TIMEOUT_SECONDS,
             max_retries=0,

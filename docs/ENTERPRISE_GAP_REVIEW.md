@@ -728,6 +728,41 @@ pre-commit（本地钩子可绕过，CI 才是硬约束）。理由写在 [CODE_
 
 ---
 
+### D-2 CI 门禁记录（进行中）
+
+**流程**：`.github/workflows/ci.yml`，3 个 job（backend / frontend / docker），推送到 `main` 或 PR 触发。
+
+| 轮次 | 结果 | 失败点 | 根因 |
+|---|---|---|---|
+| #1 | ❌ | backend「静态检查」0 秒失败 | **ruff 没进依赖清单**：P2-8 那次改 `requirements.txt` 的替换没命中，本地手工装过所以看不出来。CI 里 `ruff` → `command not found` |
+| #2 | ❌ | backend「测试 + 覆盖率」 | **N-22** `AsyncOpenAI(api_key="")` 构造即抛 `OpenAIError`，CI 没有 `LLM_API_KEY` → 6 个用例全挂 |
+| #3 | 待验证 | — | 已修：拆 `requirements-dev.txt`、LLM key 容错、compose `env_file` 可选 |
+
+**本批次新发现**
+
+| ID | 问题 | 严重度 | 状态 |
+|---|---|---|---|
+| N-22 | **`LLMService` 在 `LLM_API_KEY` 为空时构造即抛异常**：`AsyncOpenAI` 不接受空 api_key。于是任何 new 一个 `LLMService` 的路径（`ChatService` 构造、Agent 构造、相关测试）**在配置缺失时直接崩**，而不是"调用时返回清晰错误" | 🔴 高（生产隐患：漏配一个环境变量服务就起不来） | ✅ 已修：`api_key=... or "unset"` + `is_available` 标志 + 启动告警；CI 里显式给假 key |
+| N-23 | **`docker-compose.yml` 的 `env_file: [.env]` 是必需的**：没有 `.env` 的环境（CI 只做 `config` 校验、或新克隆的仓库）执行 `docker compose config` 直接 `exit 1` | 🟡 中 | ✅ 已修：改为 `path: .env, required: false`（Compose 2.24+），实测无 `.env` 时 `exit 0`、有 `.env` 时变量照常注入 |
+
+**和"遗留 bug"的关系（明确澄清）**
+
+| CI 红灯 | 与剩余 5 项（P2-1/3/5/12、D-2）有无关系 | 说明 |
+|---|---|---|
+| ruff 未安装 | **无关** | 是 P2-8 改造时的清单疏漏，不是历史遗留 |
+| LLM key 空即崩 | **无关**（是新发现的 N-22） | 之前全靠本地 `.env` 兜着，任何新环境都会踩 |
+| compose env_file 必需 | 弱相关 | D-1 的编排没考虑"没有 `.env`"的环境 |
+
+反过来也要说清：**CI 全绿 ≠ 没有 bug**。以下已知问题 CI 不会报：
+
+- `P2-1` 根目录散落脚本（ruff 会扫，但"该不该存在"它不管）
+- `P2-3` 软删除/审计、`P2-5` prompt 治理、`P2-12` 压测/反馈/License —— **功能缺失，没有测试断言**
+- `N-7`（`register_vector` 协程未 await，只产生 RuntimeWarning）、`N-11`、`N-13` —— 已记录、明确暂不修
+
+> 想让它报：修掉 N-7 之后，把 `pytest` 加上 `-W error::RuntimeWarning`，这类"静默的技术债"就会变成红灯。
+
+---
+
 ## 4. P2 优化清单（12 条）
 
 | ID | 问题 | 修复要点 |

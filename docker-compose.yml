@@ -75,7 +75,13 @@ services:
       context: ./backend
     image: kb-backend:dev
     restart: unless-stopped
-    env_file: [.env]
+    # required: false —— 让 .env 变成"可选"：
+    #   - 有 .env（本地/生产）：正常注入密钥
+    #   - 没有 .env（CI 里只做 config 校验）：不报错，只提示变量为空
+    # 之前写成 env_file: [.env]，CI 里 `docker compose config` 直接 exit 1
+    env_file:
+      - path: .env
+        required: false
     environment:
       # 容器内用服务名互相访问；覆盖 .env 里的同名项
       MYSQL_HOST: mysql

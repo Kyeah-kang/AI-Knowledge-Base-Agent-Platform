@@ -32,3 +32,11 @@ frontend/dist/
 
 # Docker Compose 环境变量（含密钥）
 .env.docker
+
+# 测试/检查产物（每次运行都会变，不该进仓库）
+.coverage
+*.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+backend/.coverage
